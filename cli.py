@@ -233,6 +233,150 @@ def predict(
 
 
 @app.command()
+def generate(
+    text: str = typer.Option(
+        "Once upon a time", "--text", "-t", help="Starting text prompt"
+    ),
+    max_length: int = typer.Option(
+        20, "--max-length", "-l", help="Number of tokens to generate"
+    ),
+    model_name: str = typer.Option(
+        "gpt2", "--model", "-m", help="Model to use (gpt2, gpt2-medium, etc.)"
+    ),
+    device: str = typer.Option(
+        "cpu", "--device", "-d", help="Device to run on (cpu or cuda)"
+    ),
+    show_steps: bool = typer.Option(
+        False, "--show-steps", "-s", help="Show each generation step"
+    ),
+):
+    """
+    🎭 Generate text using greedy decoding
+
+    This demonstrates iterative text generation by repeatedly:
+    1. Running forward pass to get next token predictions
+    2. Selecting the most likely token (argmax/greedy)
+    3. Appending it to the sequence and repeating
+    """
+
+    # Show header
+    console.print(create_header())
+    console.print()
+
+    # Initialize components with progress
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        # Load tokenizer
+        task1 = progress.add_task("🔤 Loading tokenizer...", total=None)
+        tokenizer = GPT2TokenizerWrapper(model_name)
+        progress.update(task1, completed=True)
+
+        # Load model
+        task2 = progress.add_task("🤖 Loading GPT-2 model...", total=None)
+        model = GPT2Model(model_name, device=device)
+        model.load_model()
+        progress.update(task2, completed=True)
+
+    console.print()
+
+    # Show input
+    input_panel = Panel(
+        f"📝 Starting Prompt: [bold yellow]'{text}'[/bold yellow]",
+        style="green",
+        border_style="green",
+    )
+    console.print(input_panel)
+    console.print()
+
+    # Tokenize input
+    input_ids = tokenizer.encode(text, return_tensors=True)
+    console.print(f"🔤 Input tokens: {input_ids.tolist()[0]}")
+    console.print()
+
+    # Generate text with progress tracking
+    generation_panel = Panel(
+        f"🎭 Generating {max_length} tokens using greedy decoding...",
+        style="blue",
+        border_style="blue",
+    )
+    console.print(generation_panel)
+    console.print()
+
+    if show_steps:
+        console.print("🔍 [bold blue]Generation Steps:[/bold blue]")
+
+    # Run generation
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task(f"🧠 Generating {max_length} tokens...", total=None)
+
+        # Generate with step-by-step output if requested
+        if show_steps:
+            generated_tokens = model.generate_greedy(
+                input_ids, max_length, show_progress=True
+            )
+        else:
+            generated_tokens = model.generate_greedy(
+                input_ids, max_length, show_progress=False
+            )
+
+        progress.update(task, completed=True)
+
+    console.print()
+
+    # Show results
+    original_text = text
+    full_text = tokenizer.decode(generated_tokens)
+    generated_part = full_text[len(original_text) :]
+
+    result_panel = Panel(
+        f"📝 Original: [bold yellow]'{original_text}'[/bold yellow]\n"
+        f"✨ Generated: [bold green]'{generated_part}'[/bold green]\n"
+        f"📖 Complete: [bold white]'{full_text}'[/bold white]",
+        title="🎉 Generation Result",
+        style="green",
+        border_style="green",
+    )
+    console.print(result_panel)
+    console.print()
+
+    # Show generation stats
+    stats_table = Table(
+        title="📊 Generation Statistics", show_header=True, header_style="bold magenta"
+    )
+    stats_table.add_column("Metric", style="cyan", no_wrap=True)
+    stats_table.add_column("Value", style="yellow")
+
+    input_token_count = len(input_ids[0])
+    generated_token_count = len(generated_tokens) - input_token_count
+
+    stats_table.add_row("Input Tokens", str(input_token_count))
+    stats_table.add_row("Generated Tokens", str(generated_token_count))
+    stats_table.add_row("Total Tokens", str(len(generated_tokens)))
+    stats_table.add_row("Generation Method", "Greedy (Argmax)")
+
+    console.print(stats_table)
+    console.print()
+
+    # Success message
+    success_text = Text()
+    success_text.append("✅ ", style="bold green")
+    success_text.append("Generation Complete!", style="bold white")
+    success_text.append(
+        f" Successfully generated {generated_token_count} tokens using greedy decoding",
+        style="dim white",
+    )
+
+    console.print(Panel(success_text, style="green", border_style="green"))
+
+
+@app.command()
 def info():
     """
     ℹ️  Show information about RuvonVLLM
@@ -250,10 +394,10 @@ over 20 days. This project demonstrates modern LLM serving techniques including:
 • 🔤 GPT-2 tokenization and text processing
 • 🤖 Model loading and forward pass execution
 • 🎯 Logits analysis and next-token prediction
+• 🎭 Greedy text generation (iterative decoding)
 • 💻 Beautiful CLI interface with Rich + Typer
 
 [bold yellow]🎯 Upcoming Features:[/bold yellow]
-• 🔄 Greedy decode loops (Day 2)
 • 💾 KV-cache optimization (Day 3)
 • 🌐 HTTP API server (Day 4)
 • 🎲 Advanced sampling strategies (Day 5)
@@ -270,11 +414,17 @@ over 20 days. This project demonstrates modern LLM serving techniques including:
 # Predict next token with default "Hello world"
 python cli.py predict
 
-# Try different text
-python cli.py predict --text "The future of AI is"
+# Generate text with default "Once upon a time"
+python cli.py generate
+
+# Generate with custom prompt
+python cli.py generate --text "The future of AI is" --max-length 15
+
+# Show step-by-step generation
+python cli.py generate --text "Science is" --show-steps
 
 # Use different model
-python cli.py predict --model gpt2-medium --text "Science is"
+python cli.py generate --model gpt2-medium --text "In a galaxy far, far away"
 ```
     """
 

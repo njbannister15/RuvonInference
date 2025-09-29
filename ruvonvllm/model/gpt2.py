@@ -7,7 +7,7 @@ We start with the 124M parameter model for Day 1 of our tiny vLLM implementation
 
 import torch
 from transformers import GPT2LMHeadModel, GPT2Config
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 
 class GPT2Model:
@@ -113,3 +113,81 @@ class GPT2Model:
             if self.model
             else 0,
         }
+
+    def generate_greedy(
+        self, input_ids: torch.Tensor, max_length: int = 20, show_progress: bool = False
+    ) -> List[int]:
+        """
+        Generate text using greedy decoding (argmax at each step).
+
+        Greedy decoding is the simplest generation strategy:
+        1. Start with input tokens (e.g., "Once upon a time")
+        2. Run forward pass to get logits for next token
+        3. Take the token with highest probability (argmax)
+        4. Append it to sequence and repeat
+
+        This creates deterministic output - same input always produces same result.
+        While not as creative as sampling methods, it's fast and predictable.
+
+        Args:
+            input_ids: Starting tokens with shape (1, sequence_length)
+            max_length: Maximum number of NEW tokens to generate
+            show_progress: Whether to print each generated token
+
+        Returns:
+            List of ALL token IDs (input + generated tokens)
+        """
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        # Convert to list for easier manipulation
+        sequence = input_ids.squeeze().tolist()
+        original_length = len(sequence)
+
+        if show_progress:
+            print(f"Starting generation with {original_length} input tokens...")
+
+        # Generate tokens one by one
+        for step in range(max_length):
+            # Current sequence as tensor
+            current_ids = torch.tensor(sequence).unsqueeze(0).to(self.device)
+
+            # Get logits for next token (forward pass through all 124M parameters)
+            with torch.no_grad():
+                outputs = self.model(current_ids)
+                logits = outputs.logits
+
+            # Get logits for the last position (what comes next)
+            next_token_logits = logits[0, -1, :]  # Shape: [vocab_size]
+
+            # Greedy selection: pick token with highest logit (most confident prediction)
+            next_token_id = torch.argmax(next_token_logits).item()
+
+            # Add to sequence
+            sequence.append(next_token_id)
+
+            if show_progress:
+                # Decode the new token to show what was generated
+                from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+
+                tokenizer = GPT2TokenizerWrapper(self.model_name)
+                token_text = tokenizer.decode([next_token_id])
+                print(
+                    f"Step {step + 1}: Generated token {next_token_id} -> '{token_text}'"
+                )
+
+            # Check for end-of-sequence token (optional early stopping)
+            if (
+                hasattr(self.model.config, "eos_token_id")
+                and next_token_id == self.model.config.eos_token_id
+            ):
+                if show_progress:
+                    print("Generated end-of-sequence token, stopping early.")
+                break
+
+        if show_progress:
+            print(
+                f"Generation complete! Generated {len(sequence) - original_length} new tokens."
+            )
+
+        return sequence

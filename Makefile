@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint test run-cli run-api predict
+.PHONY: setup fmt lint test run-cli run-api predict generate
 
 setup:
 	uv sync
@@ -16,3 +16,6 @@ run-cli:
 
 predict:
 	uv run python cli.py predict
+
+generate:
+	uv run python cli.py generate
