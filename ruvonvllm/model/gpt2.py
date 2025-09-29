@@ -60,11 +60,26 @@ class GPT2Model:
         """
         Run a forward pass through the model.
 
+        A forward pass feeds input data through the neural network from input to output,
+        layer by layer, to compute predictions. In GPT-2, this process involves:
+
+        1. Token Embedding: Convert token IDs to dense vectors (768 dimensions for GPT-2)
+        2. Position Encoding: Add positional information so model knows token order
+        3. Transformer Layers (12 layers for GPT-2 124M):
+           - Self-Attention: Each token "looks at" other tokens to understand context
+           - Feed-Forward Network: Process the attended information
+           - Layer Normalization & Residual Connections: Stabilize computation
+        4. Output Projection: Convert final hidden states to vocabulary-sized logits (50,257 values)
+
+        The flow: Input Tokens → Embedding → Transformer Layers → Output Logits
+        Example: [15496, 995] → [768-dim vectors] → [12 layers] → [50,257 predictions]
+
         Args:
             input_ids: Tensor of token IDs with shape (batch_size, sequence_length)
 
         Returns:
             Logits tensor with shape (batch_size, sequence_length, vocab_size)
+            Each logit represents the model's confidence for that vocabulary token
         """
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -72,6 +87,8 @@ class GPT2Model:
         input_ids = input_ids.to(self.device)
 
         with torch.no_grad():  # Disable gradient computation for inference
+            # This optimization reduces memory usage by 30-50% and improves performance
+            # since we don't need gradients for inference (only forward pass predictions)
             outputs = self.model(input_ids)
             return outputs.logits
 

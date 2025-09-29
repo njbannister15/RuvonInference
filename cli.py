@@ -79,11 +79,19 @@ def create_predictions_table(
     table.add_column("Probability", justify="right", style="green")
 
     top_logits, top_indices = torch.topk(last_token_logits, top_k)
+
+    # Convert raw logits to probabilities using softmax
+    # Logits are raw scores (can be any real number, e.g., -67.608, -68.288)
+    # Softmax transforms them into interpretable probabilities that sum to 1.0
+    # Formula: P(token_i) = e^(logit_i) / Σ(e^(logit_j))
+    # Result: -67.608 → 27.5%, -68.288 → 13.9%, etc.
     probabilities = torch.softmax(last_token_logits, dim=0)
 
     for i, (logit, token_id) in enumerate(zip(top_logits, top_indices)):
         predicted_token = tokenizer.decode([token_id.item()])
-        probability = probabilities[token_id].item()
+        probability = probabilities[
+            token_id
+        ].item()  # Now we have meaningful percentages
 
         table.add_row(
             str(i + 1),
@@ -97,7 +105,7 @@ def create_predictions_table(
 
 
 @app.command()
-def day1(
+def predict(
     text: str = typer.Option("Hello world", "--text", "-t", help="Text to process"),
     model_name: str = typer.Option(
         "gpt2", "--model", "-m", help="Model to use (gpt2, gpt2-medium, etc.)"
@@ -110,7 +118,7 @@ def day1(
     ),
 ):
     """
-    🎯 Run Day 1 Demo: Tokenizer + Single Forward Pass
+    🎯 Predict next token for given text
 
     This demonstrates the foundation of our inference engine:
     tokenization → model forward pass → prediction analysis.
@@ -215,7 +223,7 @@ def day1(
     console.print()
     success_text = Text()
     success_text.append("✅ ", style="bold green")
-    success_text.append("Day 1 Demo Complete!", style="bold white")
+    success_text.append("Prediction Complete!", style="bold white")
     success_text.append(
         " Successfully demonstrated: text → tokens → model → logits → predictions",
         style="dim white",
@@ -238,7 +246,7 @@ def info():
 A miniature but real inference system for transformer models, built from scratch
 over 20 days. This project demonstrates modern LLM serving techniques including:
 
-[bold green]📦 Current Features (Day 1):[/bold green]
+[bold green]📦 Current Features:[/bold green]
 • 🔤 GPT-2 tokenization and text processing
 • 🤖 Model loading and forward pass execution
 • 🎯 Logits analysis and next-token prediction
@@ -259,14 +267,14 @@ over 20 days. This project demonstrates modern LLM serving techniques including:
 
 [bold cyan]Usage:[/bold cyan]
 ```
-# Run Day 1 demo with default "Hello world"
-python cli.py day1
+# Predict next token with default "Hello world"
+python cli.py predict
 
 # Try different text
-python cli.py day1 --text "The future of AI is"
+python cli.py predict --text "The future of AI is"
 
 # Use different model
-python cli.py day1 --model gpt2-medium --text "Science is"
+python cli.py predict --model gpt2-medium --text "Science is"
 ```
     """
 
