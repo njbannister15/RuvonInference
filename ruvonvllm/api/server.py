@@ -192,7 +192,7 @@ def process_request_sync(request: CompletionRequest) -> CompletionResponse:
     return response
 
 
-def queue_processor():
+def sequential_queue_processor():
     """
     Background thread that processes requests from the queue sequentially.
 
@@ -233,11 +233,6 @@ def queue_processor():
         except Exception as e:
             logger.error(f"Queue processor error: {e}")
             time.sleep(1)  # Brief pause on error
-
-
-# Start the background queue processor
-queue_thread = threading.Thread(target=queue_processor, daemon=True)
-queue_thread.start()
 
 
 def process_batch_sync(batch_requests: list) -> list:
@@ -382,6 +377,9 @@ elif QUEUE_MODE == "batched":
     batched_queue_thread.start()
     print("🚀 Started batched queue processor (PREFILL BATCHING)")
 else:
+    # Start the background queue processor
+    queue_thread = threading.Thread(target=sequential_queue_processor, daemon=True)
+    queue_thread.start()
     print("📋 Using sequential queue processor (SEQUENTIAL PROCESSING)")
 
 
