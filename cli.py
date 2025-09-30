@@ -897,6 +897,1195 @@ curl -X POST http://localhost:8000/completions \\
 
 
 @app.command()
+def stress_test(
+    max_requests: int = typer.Option(
+        100, "--max-requests", "-n", help="Total number of requests to send"
+    ),
+    batch_size: int = typer.Option(
+        10, "--batch-size", "-b", help="Starting batch size (10, 20, 30, etc.)"
+    ),
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="API server host"),
+    port: int = typer.Option(8000, "--port", "-p", help="API server port"),
+    prompt: str = typer.Option(
+        "Stress test prompt", "--prompt", "-t", help="Prompt to use for requests"
+    ),
+    max_tokens: int = typer.Option(
+        5, "--max-tokens", "-m", help="Number of tokens to generate per request"
+    ),
+    auto_start_server: bool = typer.Option(
+        True, "--auto-start", "-a", help="Automatically start server if not running"
+    ),
+):
+    """
+    🚀 Run stress test with increasing batch sizes
+
+    This sends requests in increasing batches (10, 20, 30, 40...) to test
+    the queue system's ability to handle multiple concurrent requests.
+    """
+    import asyncio
+    import aiohttp
+    import time
+    import subprocess
+    import signal
+    import os
+    from rich.live import Live
+
+    # Show header
+    console.print(create_header())
+    console.print()
+
+    # Show test configuration
+    config_panel = Panel(
+        f"🚀 Stress Test Configuration:\n"
+        f"📊 Total requests: [bold cyan]{max_requests}[/bold cyan]\n"
+        f"📦 Batch size: [bold cyan]{batch_size}[/bold cyan] (increments by {batch_size})\n"
+        f"🌐 Server: [bold cyan]http://{host}:{port}[/bold cyan]\n"
+        f"📝 Prompt: [bold yellow]'{prompt}'[/bold yellow]\n"
+        f"🎭 Tokens per request: [bold cyan]{max_tokens}[/bold cyan]\n"
+        f"🔄 Auto-start server: [bold cyan]{'Yes' if auto_start_server else 'No'}[/bold cyan]",
+        title="🧪 Stress Test Setup",
+        style="blue",
+        border_style="blue",
+    )
+    console.print(config_panel)
+    console.print()
+
+    server_process = None
+
+    try:
+        # Check if server is running, start if needed
+        async def check_server():
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://{host}:{port}/health", timeout=3
+                    ) as response:
+                        return response.status == 200
+            except Exception:
+                return False
+
+        async def start_server_if_needed():
+            nonlocal server_process
+            is_running = await check_server()
+
+            if not is_running and auto_start_server:
+                console.print("🚀 [bold blue]Starting API server...[/bold blue]")
+
+                # Start server in background
+                server_process = subprocess.Popen(
+                    ["make", "run-api"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    preexec_fn=os.setsid,  # Create new process group
+                )
+
+                # Wait for server to start
+                for i in range(30):  # Wait up to 30 seconds
+                    await asyncio.sleep(1)
+                    if await check_server():
+                        console.print(
+                            "✅ [bold green]Server started successfully[/bold green]"
+                        )
+                        console.print()
+                        return True
+
+                console.print("❌ [bold red]Failed to start server[/bold red]")
+                return False
+            elif is_running:
+                console.print("✅ [bold green]Server is already running[/bold green]")
+                console.print()
+                return True
+            else:
+                console.print(
+                    "❌ [bold red]Server not running. Use --auto-start to start automatically[/bold red]"
+                )
+                return False
+
+        # Send a batch of requests
+        async def send_batch(session, batch_size, batch_num):
+            """Send a batch of requests concurrently and measure timing."""
+            request_data = {
+                "prompt": f"{prompt} (batch {batch_num})",
+                "max_tokens": max_tokens,
+            }
+
+            start_time = time.time()
+            tasks = []
+
+            for i in range(batch_size):
+                task = session.post(
+                    f"http://{host}:{port}/completions",
+                    json=request_data,
+                    timeout=60,  # 60 second timeout per request
+                )
+                tasks.append(task)
+
+            try:
+                responses = await asyncio.gather(*tasks, return_exceptions=True)
+                end_time = time.time()
+
+                # Count successful responses
+                successful = 0
+                failed = 0
+                for response in responses:
+                    if isinstance(response, Exception):
+                        failed += 1
+                    else:
+                        if response.status == 200:
+                            successful += 1
+                        else:
+                            failed += 1
+                        response.close()
+
+                return {
+                    "batch_size": batch_size,
+                    "batch_num": batch_num,
+                    "successful": successful,
+                    "failed": failed,
+                    "total_time": end_time - start_time,
+                    "requests_per_second": batch_size / (end_time - start_time)
+                    if end_time > start_time
+                    else 0,
+                }
+
+            except Exception as e:
+                return {
+                    "batch_size": batch_size,
+                    "batch_num": batch_num,
+                    "successful": 0,
+                    "failed": batch_size,
+                    "total_time": time.time() - start_time,
+                    "requests_per_second": 0,
+                    "error": str(e),
+                }
+
+        async def run_stress_test():
+            # Start server if needed
+            if not await start_server_if_needed():
+                return
+
+            # Initialize session
+            async with aiohttp.ClientSession() as session:
+                # Get initial queue stats
+                try:
+                    async with session.get(f"http://{host}:{port}/queue") as response:
+                        initial_stats = await response.json()
+                        console.print(f"📊 Initial queue state: {initial_stats}")
+                        console.print()
+                except Exception:
+                    console.print("⚠️  Could not fetch initial queue stats")
+                    console.print()
+
+                # Run batches
+                total_sent = 0
+                total_successful = 0
+                total_failed = 0
+                results = []
+
+                current_batch_size = batch_size
+                batch_num = 1
+
+                console.print("🚀 [bold blue]Starting stress test...[/bold blue]")
+                console.print()
+
+                # Create results table
+                results_table = Table(
+                    title="📊 Real-time Stress Test Results",
+                    show_header=True,
+                    header_style="bold magenta",
+                )
+                results_table.add_column("Batch #", style="cyan", no_wrap=True)
+                results_table.add_column("Size", style="yellow")
+                results_table.add_column("Success", style="green")
+                results_table.add_column("Failed", style="red")
+                results_table.add_column("Time (s)", style="blue")
+                results_table.add_column("Req/s", style="magenta")
+
+                with Live(results_table, refresh_per_second=1) as live:
+                    while total_sent < max_requests:
+                        # Adjust batch size to not exceed max_requests
+                        remaining = max_requests - total_sent
+                        actual_batch_size = min(current_batch_size, remaining)
+
+                        # Send batch
+                        result = await send_batch(session, actual_batch_size, batch_num)
+                        results.append(result)
+
+                        # Update stats
+                        total_sent += actual_batch_size
+                        total_successful += result["successful"]
+                        total_failed += result["failed"]
+
+                        # Add to table
+                        results_table.add_row(
+                            str(batch_num),
+                            str(actual_batch_size),
+                            str(result["successful"]),
+                            str(result["failed"]),
+                            f"{result['total_time']:.2f}",
+                            f"{result['requests_per_second']:.1f}",
+                        )
+
+                        # Update live display
+                        live.update(results_table)
+
+                        # Move to next batch
+                        current_batch_size += batch_size
+                        batch_num += 1
+
+                        # Small delay between batches
+                        await asyncio.sleep(1)
+
+                console.print()
+
+                # Get final queue stats
+                try:
+                    async with session.get(f"http://{host}:{port}/queue") as response:
+                        final_stats = await response.json()
+                        console.print(f"📊 Final queue state: {final_stats}")
+                        console.print()
+                except Exception:
+                    console.print("⚠️  Could not fetch final queue stats")
+                    console.print()
+
+                # Summary statistics
+                total_time = sum(r["total_time"] for r in results)
+                avg_requests_per_second = (
+                    sum(r["requests_per_second"] for r in results) / len(results)
+                    if results
+                    else 0
+                )
+
+                summary_table = Table(
+                    title="📈 Stress Test Summary",
+                    show_header=True,
+                    header_style="bold green",
+                )
+                summary_table.add_column("Metric", style="cyan", no_wrap=True)
+                summary_table.add_column("Value", style="yellow")
+
+                summary_table.add_row("Total Requests Sent", str(total_sent))
+                summary_table.add_row("Successful Requests", str(total_successful))
+                summary_table.add_row("Failed Requests", str(total_failed))
+                summary_table.add_row(
+                    "Success Rate",
+                    f"{(total_successful/total_sent*100):.1f}%"
+                    if total_sent > 0
+                    else "0%",
+                )
+                summary_table.add_row("Total Batches", str(len(results)))
+                summary_table.add_row(
+                    "Avg Requests/Second", f"{avg_requests_per_second:.1f}"
+                )
+                summary_table.add_row("Total Test Time", f"{total_time:.2f}s")
+
+                console.print(summary_table)
+                console.print()
+
+                # Success message
+                if total_successful == total_sent:
+                    status_style = "green"
+                    status_msg = "✅ All requests successful!"
+                elif total_successful > total_sent * 0.8:
+                    status_style = "yellow"
+                    status_msg = f"⚠️  {total_failed} requests failed"
+                else:
+                    status_style = "red"
+                    status_msg = f"❌ {total_failed} requests failed"
+
+                success_text = Text()
+                success_text.append("🧪 ", style="bold blue")
+                success_text.append("Stress Test Complete! ", style="bold white")
+                success_text.append(status_msg, style=f"bold {status_style}")
+
+                console.print(
+                    Panel(success_text, style=status_style, border_style=status_style)
+                )
+
+        # Run the async stress test
+        asyncio.run(run_stress_test())
+
+    except KeyboardInterrupt:
+        console.print("\n🛑 [bold red]Stress test stopped by user[/bold red]")
+    except Exception as e:
+        console.print(f"\n❌ [bold red]Stress test error: {e}[/bold red]")
+    finally:
+        # Clean up server process if we started it
+        if server_process:
+            console.print("🛑 [bold blue]Stopping server...[/bold blue]")
+            try:
+                # Kill the process group to ensure all child processes are killed
+                os.killpg(os.getpgid(server_process.pid), signal.SIGTERM)
+                server_process.wait(timeout=5)
+            except Exception:
+                try:
+                    os.killpg(os.getpgid(server_process.pid), signal.SIGKILL)
+                except Exception:
+                    pass
+            console.print("✅ [bold green]Server stopped[/bold green]")
+
+
+@app.command()
+def rapid_test(
+    total_requests: int = typer.Option(
+        50, "--total", "-n", help="Total number of requests to send rapidly"
+    ),
+    concurrent_limit: int = typer.Option(
+        20, "--concurrent", "-c", help="Maximum concurrent requests"
+    ),
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="API server host"),
+    port: int = typer.Option(8000, "--port", "-p", help="API server port"),
+    prompt: str = typer.Option(
+        "Rapid test", "--prompt", "-t", help="Prompt to use for requests"
+    ),
+    max_tokens: int = typer.Option(
+        10, "--max-tokens", "-m", help="Number of tokens to generate per request"
+    ),
+    auto_start_server: bool = typer.Option(
+        True, "--auto-start", "-a", help="Automatically start server if not running"
+    ),
+    monitor_queue: bool = typer.Option(
+        True, "--monitor", help="Show real-time queue monitoring"
+    ),
+):
+    """
+    🚀 Rapid-fire test to fill the queue and test sequential processing
+
+    This sends requests as fast as possible to actually build up the queue
+    and demonstrate the sequential processing behavior. Unlike stress-test,
+    this doesn't wait between batches.
+    """
+    import asyncio
+    import aiohttp
+    import time
+    import subprocess
+    import signal
+    import os
+    from rich.live import Live
+    from rich.columns import Columns
+
+    # Show header
+    console.print(create_header())
+    console.print()
+
+    # Show test configuration
+    config_panel = Panel(
+        f"🚀 Rapid-Fire Test Configuration:\n"
+        f"📊 Total requests: [bold cyan]{total_requests}[/bold cyan]\n"
+        f"⚡ Concurrent limit: [bold cyan]{concurrent_limit}[/bold cyan]\n"
+        f"🌐 Server: [bold cyan]http://{host}:{port}[/bold cyan]\n"
+        f"📝 Prompt: [bold yellow]'{prompt}'[/bold yellow]\n"
+        f"🎭 Tokens per request: [bold cyan]{max_tokens}[/bold cyan]\n"
+        f"🔄 Auto-start server: [bold cyan]{'Yes' if auto_start_server else 'No'}[/bold cyan]\n"
+        f"📊 Monitor queue: [bold cyan]{'Yes' if monitor_queue else 'No'}[/bold cyan]",
+        title="⚡ Rapid Queue Test Setup",
+        style="blue",
+        border_style="blue",
+    )
+    console.print(config_panel)
+    console.print()
+
+    server_process = None
+    start_time = time.time()
+
+    try:
+        # Check if server is running, start if needed
+        async def check_server():
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://{host}:{port}/health", timeout=3
+                    ) as response:
+                        return response.status == 200
+            except Exception:
+                return False
+
+        async def start_server_if_needed():
+            nonlocal server_process
+            is_running = await check_server()
+
+            if not is_running and auto_start_server:
+                console.print("🚀 [bold blue]Starting API server...[/bold blue]")
+
+                server_process = subprocess.Popen(
+                    ["make", "run-api"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    preexec_fn=os.setsid,
+                )
+
+                # Wait for server to start
+                for i in range(30):
+                    await asyncio.sleep(1)
+                    if await check_server():
+                        console.print(
+                            "✅ [bold green]Server started successfully[/bold green]"
+                        )
+                        console.print()
+                        return True
+
+                console.print("❌ [bold red]Failed to start server[/bold red]")
+                return False
+            elif is_running:
+                console.print("✅ [bold green]Server is already running[/bold green]")
+                console.print()
+                return True
+            else:
+                console.print(
+                    "❌ [bold red]Server not running. Use --auto-start to start automatically[/bold red]"
+                )
+                return False
+
+        async def get_queue_stats(session):
+            """Fetch current queue statistics."""
+            try:
+                async with session.get(
+                    f"http://{host}:{port}/queue", timeout=2
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    return None
+            except Exception:
+                return None
+
+        async def send_single_request(session, request_id):
+            """Send a single request and track its timing."""
+            request_data = {
+                "prompt": f"{prompt} #{request_id}",
+                "max_tokens": max_tokens,
+            }
+
+            start_time_req = time.time()
+            try:
+                async with session.post(
+                    f"http://{host}:{port}/completions", json=request_data, timeout=60
+                ) as response:
+                    end_time_req = time.time()
+
+                    if response.status == 200:
+                        result = await response.json()
+                        response_text = ""
+                        if "choices" in result and len(result["choices"]) > 0:
+                            response_text = result["choices"][0].get("text", "")
+
+                        return {
+                            "id": request_id,
+                            "status": "completed",
+                            "duration": end_time_req - start_time_req,
+                            "response": response_text,
+                            "completed_at": end_time_req,
+                        }
+                    else:
+                        return {
+                            "id": request_id,
+                            "status": "failed",
+                            "duration": end_time_req - start_time_req,
+                            "error": f"HTTP {response.status}",
+                            "completed_at": end_time_req,
+                        }
+
+            except Exception as e:
+                return {
+                    "id": request_id,
+                    "status": "failed",
+                    "duration": time.time() - start_time_req,
+                    "error": str(e),
+                    "completed_at": time.time(),
+                }
+
+        def create_monitoring_display(
+            active_requests, completed_requests, current_stats
+        ):
+            """Create real-time monitoring display."""
+
+            # Stats table
+            stats_table = Table(show_header=False, box=None, padding=(0, 1))
+            stats_table.add_column("Metric", style="cyan", no_wrap=True)
+            stats_table.add_column("Value", style="yellow")
+
+            elapsed = time.time() - start_time
+            stats_table.add_row("🕒 Elapsed", f"{elapsed:.1f}s")
+            stats_table.add_row("🚀 Active Requests", str(len(active_requests)))
+            stats_table.add_row("✅ Completed", str(len(completed_requests)))
+            stats_table.add_row(
+                "❌ Failed",
+                str(sum(1 for r in completed_requests if r["status"] == "failed")),
+            )
+
+            if current_stats:
+                stats_table.add_row(
+                    "📦 Queue Size", str(current_stats.get("queue_size", "N/A"))
+                )
+                stats_table.add_row(
+                    "⏳ Queued", str(current_stats.get("queued_requests", "N/A"))
+                )
+                stats_table.add_row(
+                    "🔄 Processing",
+                    str(current_stats.get("processing_requests", "N/A")),
+                )
+                stats_table.add_row(
+                    "📊 Total Processed",
+                    str(current_stats.get("total_processed", "N/A")),
+                )
+
+            stats_panel = Panel(
+                stats_table, title="📊 Real-time Statistics", style="green"
+            )
+
+            # Recent completions
+            recent_table = Table(show_header=True, header_style="bold magenta")
+            recent_table.add_column("ID", style="cyan", no_wrap=True)
+            recent_table.add_column("Status", style="yellow")
+            recent_table.add_column("Duration", style="blue")
+            recent_table.add_column("Response", style="white")
+
+            for req in completed_requests[-8:]:  # Show last 8
+                response_text = req.get("response", req.get("error", ""))
+                if len(response_text) > 30:
+                    response_text = response_text[:27] + "..."
+
+                status_style = "green" if req["status"] == "completed" else "red"
+                status_text = f"[{status_style}]{req['status']}[/{status_style}]"
+
+                recent_table.add_row(
+                    f"#{req['id']}",
+                    status_text,
+                    f"{req['duration']:.2f}s",
+                    f"'{response_text}'",
+                )
+
+            recent_panel = Panel(
+                recent_table, title="📝 Recent Completions", style="blue"
+            )
+
+            return Columns([stats_panel, recent_panel])
+
+        async def run_rapid_test():
+            # Start server if needed
+            if not await start_server_if_needed():
+                return
+
+            async with aiohttp.ClientSession() as session:
+                active_requests = {}
+                completed_requests = []
+                semaphore = asyncio.Semaphore(concurrent_limit)
+
+                async def limited_request(request_id):
+                    async with semaphore:
+                        return await send_single_request(session, request_id)
+
+                console.print(
+                    "⚡ [bold blue]Sending requests as fast as possible...[/bold blue]"
+                )
+                console.print()
+
+                if monitor_queue:
+
+                    def create_display():
+                        return create_monitoring_display(
+                            active_requests, completed_requests, None
+                        )
+
+                    with Live(create_display(), refresh_per_second=2) as live:
+                        # Create all tasks immediately
+                        tasks = []
+                        for i in range(total_requests):
+                            task = asyncio.create_task(limited_request(i + 1))
+                            tasks.append(task)
+                            active_requests[i + 1] = task
+
+                        # Monitor completion
+                        while active_requests:
+                            # Get current queue stats
+                            current_stats = await get_queue_stats(session)
+
+                            # Check for completed tasks
+                            done_tasks = []
+                            for req_id, task in list(active_requests.items()):
+                                if task.done():
+                                    try:
+                                        result = await task
+                                        completed_requests.append(result)
+                                        done_tasks.append(req_id)
+                                    except Exception as e:
+                                        completed_requests.append(
+                                            {
+                                                "id": req_id,
+                                                "status": "failed",
+                                                "duration": 0,
+                                                "error": str(e),
+                                                "completed_at": time.time(),
+                                            }
+                                        )
+                                        done_tasks.append(req_id)
+
+                            # Remove completed tasks
+                            for req_id in done_tasks:
+                                active_requests.pop(req_id, None)
+
+                            # Update display
+                            live.update(
+                                create_monitoring_display(
+                                    active_requests, completed_requests, current_stats
+                                )
+                            )
+
+                            await asyncio.sleep(0.1)
+
+                        # Wait for all tasks to complete
+                        await asyncio.gather(*tasks, return_exceptions=True)
+                else:
+                    # Simple mode without monitoring
+                    tasks = [limited_request(i + 1) for i in range(total_requests)]
+                    completed_requests = await asyncio.gather(
+                        *tasks, return_exceptions=True
+                    )
+
+                console.print()
+
+                # Final statistics
+                total_time = time.time() - start_time
+                successful = sum(
+                    1
+                    for r in completed_requests
+                    if isinstance(r, dict) and r.get("status") == "completed"
+                )
+                failed = len(completed_requests) - successful
+
+                final_table = Table(
+                    title="🎯 Final Results",
+                    show_header=True,
+                    header_style="bold green",
+                )
+                final_table.add_column("Metric", style="cyan", no_wrap=True)
+                final_table.add_column("Value", style="yellow")
+
+                final_table.add_row("Total Requests", str(total_requests))
+                final_table.add_row("Successful", str(successful))
+                final_table.add_row("Failed", str(failed))
+                final_table.add_row(
+                    "Success Rate", f"{(successful/total_requests*100):.1f}%"
+                )
+                final_table.add_row("Total Time", f"{total_time:.2f}s")
+                final_table.add_row(
+                    "Requests/Second", f"{total_requests/total_time:.1f}"
+                )
+
+                console.print(final_table)
+                console.print()
+
+                # Get final queue stats
+                try:
+                    final_stats = await get_queue_stats(session)
+                    if final_stats:
+                        console.print(f"📊 Final queue state: {final_stats}")
+                except Exception:
+                    pass
+
+        # Run the rapid test
+        asyncio.run(run_rapid_test())
+
+    except KeyboardInterrupt:
+        console.print("\n🛑 [bold red]Rapid test stopped by user[/bold red]")
+    except Exception as e:
+        console.print(f"\n❌ [bold red]Rapid test error: {e}[/bold red]")
+    finally:
+        # Clean up server process if we started it
+        if server_process:
+            console.print("🛑 [bold blue]Stopping server...[/bold blue]")
+            try:
+                os.killpg(os.getpgid(server_process.pid), signal.SIGTERM)
+                server_process.wait(timeout=5)
+            except Exception:
+                try:
+                    os.killpg(os.getpgid(server_process.pid), signal.SIGKILL)
+                except Exception:
+                    pass
+            console.print("✅ [bold green]Server stopped[/bold green]")
+
+
+@app.command()
+def monitor(
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="API server host"),
+    port: int = typer.Option(8000, "--port", "-p", help="API server port"),
+    refresh_rate: float = typer.Option(
+        0.5, "--refresh", "-r", help="Refresh rate in seconds"
+    ),
+    auto_start_server: bool = typer.Option(
+        False, "--auto-start", "-a", help="Automatically start server if not running"
+    ),
+    send_test_requests: bool = typer.Option(
+        False, "--test-requests", "-t", help="Send periodic test requests"
+    ),
+):
+    """
+    📊 Real-time monitoring dashboard for queue and requests
+
+    This creates a live-updating CLI dashboard showing:
+    - Real-time queue statistics
+    - Active request tracking
+    - Live streaming responses
+    - Server health metrics
+    """
+    import asyncio
+    import aiohttp
+    import time
+    import subprocess
+    import signal
+    import os
+    from datetime import datetime
+    from rich.live import Live
+    from rich.layout import Layout
+    from rich.align import Align
+    from rich.text import Text
+
+    # Show header
+    console.print(create_header())
+    console.print()
+
+    # Show monitor configuration
+    config_panel = Panel(
+        f"📊 Real-time Monitor Configuration:\n"
+        f"🌐 Server: [bold cyan]http://{host}:{port}[/bold cyan]\n"
+        f"🔄 Refresh rate: [bold cyan]{refresh_rate}s[/bold cyan]\n"
+        f"🚀 Auto-start server: [bold cyan]{'Yes' if auto_start_server else 'No'}[/bold cyan]\n"
+        f"🧪 Send test requests: [bold cyan]{'Yes' if send_test_requests else 'No'}[/bold cyan]",
+        title="📊 Live Dashboard Setup",
+        style="blue",
+        border_style="blue",
+    )
+    console.print(config_panel)
+    console.print()
+
+    server_process = None
+    active_requests = {}
+    request_history = []
+    start_time = time.time()
+
+    def create_queue_stats_panel(stats):
+        """Create a panel showing current queue statistics."""
+        if not stats:
+            return Panel("❌ Could not fetch queue stats", style="red")
+
+        # Calculate uptime
+        uptime = time.time() - start_time
+        uptime_str = (
+            f"{int(uptime//3600):02d}:{int((uptime%3600)//60):02d}:{int(uptime%60):02d}"
+        )
+
+        queue_table = Table(show_header=False, box=None, padding=(0, 1))
+        queue_table.add_column("Metric", style="cyan", no_wrap=True)
+        queue_table.add_column("Value", style="yellow")
+
+        queue_table.add_row("🕒 Uptime", uptime_str)
+        queue_table.add_row("📦 Queue Size", str(stats.get("queue_size", "N/A")))
+        queue_table.add_row(
+            "⏳ Queued Requests", str(stats.get("queued_requests", "N/A"))
+        )
+        queue_table.add_row(
+            "🔄 Processing", str(stats.get("processing_requests", "N/A"))
+        )
+        queue_table.add_row(
+            "✅ Total Processed", str(stats.get("total_processed", "N/A"))
+        )
+        queue_table.add_row("❌ Total Failed", str(stats.get("total_failed", "N/A")))
+
+        avg_wait = stats.get("average_wait_time")
+        avg_proc = stats.get("average_processing_time")
+        queue_table.add_row(
+            "⏱️  Avg Wait Time", f"{avg_wait:.3f}s" if avg_wait else "N/A"
+        )
+        queue_table.add_row(
+            "⚡ Avg Process Time", f"{avg_proc:.3f}s" if avg_proc else "N/A"
+        )
+
+        current_req = stats.get("current_request_id")
+        queue_table.add_row(
+            "🎯 Current Request", current_req[:8] + "..." if current_req else "None"
+        )
+
+        return Panel(queue_table, title="📊 Queue Statistics", style="green")
+
+    def create_active_requests_panel(queue_stats):
+        """Create a panel showing server-side queue information and client requests."""
+        # Create a table showing server queue status and our own tracked requests
+        req_table = Table(show_header=True, header_style="bold magenta")
+        req_table.add_column("Source", style="cyan", no_wrap=True)
+        req_table.add_column("Status", style="yellow")
+        req_table.add_column("Count/Info", style="blue")
+        req_table.add_column("Details", style="white")
+
+        if queue_stats:
+            # Show server-side queue information
+            queue_size = queue_stats.get("queue_size", 0)
+            processing = queue_stats.get("processing_requests", 0)
+            current_req = queue_stats.get("current_request_id")
+
+            if queue_size > 0:
+                req_table.add_row(
+                    "🌐 Server Queue",
+                    "⏳ queued",
+                    str(queue_size),
+                    "Requests waiting to be processed",
+                )
+
+            if processing > 0:
+                req_table.add_row(
+                    "🌐 Server",
+                    "🔄 processing",
+                    str(processing),
+                    f"Current: {current_req[:8] + '...' if current_req else 'unknown'}",
+                )
+
+            if queue_size == 0 and processing == 0:
+                req_table.add_row(
+                    "🌐 Server", "💤 idle", "0", "No requests in queue or processing"
+                )
+
+        # Show our own tracked requests (if any)
+        if active_requests:
+            for req_id, req_data in list(active_requests.items())[:5]:  # Show last 5
+                elapsed = time.time() - req_data.get("start_time", time.time())
+                response_text = req_data.get("response", "")
+                if len(response_text) > 30:
+                    response_text = response_text[:27] + "..."
+
+                req_table.add_row(
+                    "📱 Monitor",
+                    req_data.get("status", "unknown"),
+                    f"{elapsed:.1f}s",
+                    f"'{response_text}'",
+                )
+
+        if not queue_stats and not active_requests:
+            return Panel("No queue data or active requests", style="dim")
+
+        return Panel(req_table, title="🔄 Request Activity", style="blue")
+
+    def create_request_history_panel(server_completions=None):
+        """Create a panel showing recent completed requests from server and local history."""
+        history_table = Table(show_header=True, header_style="bold magenta")
+        history_table.add_column("Time", style="cyan", no_wrap=True)
+        history_table.add_column("Prompt", style="green", no_wrap=True)
+        history_table.add_column("Status", style="yellow")
+        history_table.add_column("Response", style="white")
+
+        # Combine server completions and local history
+        all_requests = []
+
+        # Add server-side completions (external requests)
+        if server_completions:
+            for req in server_completions:
+                if req.get("completed_at"):
+                    all_requests.append(
+                        {
+                            "completed_at": req["completed_at"],
+                            "prompt": req.get("prompt", "Unknown"),
+                            "response": req.get("response", "No response"),
+                            "status": req.get("status", "unknown"),
+                            "total_time": req.get("total_time", 0),
+                            "source": "server",
+                        }
+                    )
+
+        # Add local history (monitor's own requests)
+        for req in request_history:
+            all_requests.append(
+                {
+                    "completed_at": req["completed_at"],
+                    "prompt": "Monitor test",
+                    "response": req.get("response", "No response"),
+                    "status": req["status"],
+                    "total_time": req.get("duration", 0),
+                    "source": "monitor",
+                }
+            )
+
+        if not all_requests:
+            return Panel("No completed requests yet", style="dim")
+
+        # Sort by completion time (newest first) and take last 8
+        all_requests.sort(key=lambda x: x["completed_at"], reverse=True)
+
+        for req in all_requests[:8]:
+            completion_time = datetime.fromtimestamp(req["completed_at"]).strftime(
+                "%H:%M:%S"
+            )
+
+            # Truncate prompt and response for display
+            prompt_text = req["prompt"]
+            if len(prompt_text) > 20:
+                prompt_text = prompt_text[:17] + "..."
+
+            response_text = req["response"]
+            if len(response_text) > 30:
+                response_text = response_text[:27] + "..."
+
+            status_style = "green" if req["status"] == "completed" else "red"
+            status_text = f"[{status_style}]{req['status']}[/{status_style}]"
+
+            # Add source indicator
+            if req.get("source") == "monitor":
+                prompt_text = f"📱 {prompt_text}"
+            else:
+                prompt_text = f"🌐 {prompt_text}"
+
+            history_table.add_row(
+                completion_time, prompt_text, status_text, f"'{response_text}'"
+            )
+
+        return Panel(
+            history_table, title="📝 Recent Requests & Responses", style="yellow"
+        )
+
+    def create_server_health_panel(health_data):
+        """Create a panel showing server health."""
+        if not health_data:
+            return Panel("❌ Server offline", style="red")
+
+        health_table = Table(show_header=False, box=None, padding=(0, 1))
+        health_table.add_column("Metric", style="cyan", no_wrap=True)
+        health_table.add_column("Value", style="yellow")
+
+        health_table.add_row("🩺 Status", health_data.get("status", "unknown"))
+        models = health_data.get("models_loaded", [])
+        tokenizers = health_data.get("tokenizers_loaded", [])
+        health_table.add_row("🤖 Models", f"{len(models)} loaded")
+        health_table.add_row("🔤 Tokenizers", f"{len(tokenizers)} loaded")
+
+        return Panel(health_table, title="🩺 Server Health", style="green")
+
+    try:
+        # Check if server is running, start if needed
+        async def check_server():
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://{host}:{port}/health", timeout=3
+                    ) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        return None
+            except Exception:
+                return None
+
+        async def start_server_if_needed():
+            nonlocal server_process
+            health_data = await check_server()
+
+            if not health_data and auto_start_server:
+                console.print("🚀 [bold blue]Starting API server...[/bold blue]")
+
+                server_process = subprocess.Popen(
+                    ["make", "run-api"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    preexec_fn=os.setsid,
+                )
+
+                # Wait for server to start
+                for i in range(30):
+                    await asyncio.sleep(1)
+                    health_data = await check_server()
+                    if health_data:
+                        console.print(
+                            "✅ [bold green]Server started successfully[/bold green]"
+                        )
+                        console.print()
+                        return health_data
+
+                console.print("❌ [bold red]Failed to start server[/bold red]")
+                return None
+            elif health_data:
+                console.print("✅ [bold green]Server is running[/bold green]")
+                console.print()
+                return health_data
+            else:
+                console.print(
+                    "❌ [bold red]Server not running. Use --auto-start to start automatically[/bold red]"
+                )
+                return None
+
+        async def send_test_request(session, request_num):
+            """Send a test request and track its progress."""
+            if not send_test_requests:
+                return
+
+            try:
+                request_data = {
+                    "prompt": f"Monitor test {request_num}: Once upon a time",
+                    "max_tokens": 8,
+                }
+
+                start_time_req = time.time()
+                async with session.post(
+                    f"http://{host}:{port}/completions", json=request_data, timeout=30
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        duration = time.time() - start_time_req
+
+                        # Extract response text
+                        response_text = ""
+                        if "choices" in result and len(result["choices"]) > 0:
+                            response_text = result["choices"][0].get("text", "")
+
+                        # Add to history
+                        request_history.append(
+                            {
+                                "completed_at": time.time(),
+                                "status": "completed",
+                                "duration": duration,
+                                "response": response_text,
+                            }
+                        )
+
+                        # Keep history limited
+                        if len(request_history) > 20:
+                            request_history.pop(0)
+
+            except Exception as e:
+                # Add failed request to history
+                request_history.append(
+                    {
+                        "completed_at": time.time(),
+                        "status": "failed",
+                        "duration": time.time() - start_time_req,
+                        "response": str(e)[:50],
+                    }
+                )
+
+        async def get_queue_stats(session):
+            """Fetch current queue statistics."""
+            try:
+                async with session.get(
+                    f"http://{host}:{port}/queue", timeout=3
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    return None
+            except Exception:
+                return None
+
+        async def get_server_completions(session):
+            """Fetch recent completed requests from the server."""
+            try:
+                async with session.get(
+                    f"http://{host}:{port}/queue/recent?limit=10", timeout=3
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    return None
+            except Exception:
+                return None
+
+        async def run_monitor():
+            # Start server if needed
+            health_data = await start_server_if_needed()
+            if not health_data:
+                return
+
+            async with aiohttp.ClientSession() as session:
+                request_counter = 1
+
+                def create_layout():
+                    # Create layout
+                    layout = Layout()
+
+                    layout.split_column(
+                        Layout(name="header", size=3),
+                        Layout(name="main"),
+                        Layout(name="footer", size=3),
+                    )
+
+                    layout["main"].split_row(Layout(name="left"), Layout(name="right"))
+
+                    layout["left"].split_column(
+                        Layout(name="queue"), Layout(name="health")
+                    )
+
+                    layout["right"].split_column(
+                        Layout(name="active"), Layout(name="history")
+                    )
+
+                    return layout
+
+                def update_layout(layout, stats, health, server_completions=None):
+                    # Header
+                    header_text = Text()
+                    header_text.append("📊 ", style="bold blue")
+                    header_text.append("RuvonVLLM Live Monitor", style="bold white")
+                    header_text.append(
+                        f" • {datetime.now().strftime('%H:%M:%S')}", style="dim white"
+                    )
+                    layout["header"].update(Align.center(header_text))
+
+                    # Content panels
+                    layout["queue"].update(create_queue_stats_panel(stats))
+                    layout["health"].update(create_server_health_panel(health))
+                    layout["active"].update(create_active_requests_panel(stats))
+                    layout["history"].update(
+                        create_request_history_panel(server_completions)
+                    )
+
+                    # Footer
+                    footer_text = Text()
+                    footer_text.append("Press ", style="dim white")
+                    footer_text.append("Ctrl+C", style="bold red")
+                    footer_text.append(" to exit", style="dim white")
+                    layout["footer"].update(Align.center(footer_text))
+
+                layout = create_layout()
+
+                with Live(
+                    layout, refresh_per_second=1 / refresh_rate, screen=True
+                ) as live:
+                    try:
+                        while True:
+                            # Fetch current data
+                            stats = await get_queue_stats(session)
+                            health = await check_server()
+                            server_completions = await get_server_completions(session)
+
+                            # Send test request occasionally
+                            if send_test_requests and request_counter % 10 == 0:
+                                asyncio.create_task(
+                                    send_test_request(session, request_counter // 10)
+                                )
+
+                            # Update layout
+                            update_layout(layout, stats, health, server_completions)
+                            live.update(layout)
+
+                            request_counter += 1
+                            await asyncio.sleep(refresh_rate)
+
+                    except KeyboardInterrupt:
+                        pass
+
+        # Run the async monitor
+        asyncio.run(run_monitor())
+
+    except KeyboardInterrupt:
+        console.print("\n🛑 [bold red]Monitor stopped by user[/bold red]")
+    except Exception as e:
+        console.print(f"\n❌ [bold red]Monitor error: {e}[/bold red]")
+    finally:
+        # Clean up server process if we started it
+        if server_process:
+            console.print("🛑 [bold blue]Stopping server...[/bold blue]")
+            try:
+                os.killpg(os.getpgid(server_process.pid), signal.SIGTERM)
+                server_process.wait(timeout=5)
+            except Exception:
+                try:
+                    os.killpg(os.getpgid(server_process.pid), signal.SIGKILL)
+                except Exception:
+                    pass
+            console.print("✅ [bold green]Server stopped[/bold green]")
+
+
+@app.command()
 def info():
     """
     ℹ️  Show information about RuvonVLLM
@@ -920,6 +2109,9 @@ over 20 days. This project demonstrates modern LLM serving techniques including:
 • 💻 Beautiful CLI interface with Rich + Typer
 • 🌐 HTTP API server with streaming (/completions)
 • 🎲 Advanced sampling: temperature, top-k, nucleus (top-p)
+• 📦 Request queue system for sequential processing
+• 🚀 Stress testing with incremental batch sizes
+• 📊 Real-time monitoring dashboard (htop for LLM servers)
 
 [bold yellow]🎯 Upcoming Features:[/bold yellow]
 • ⚡ Continuous batching (Days 6-8)
@@ -955,6 +2147,12 @@ python cli.py benchmark --max-length 30
 
 # Start HTTP API server
 python cli.py serve --port 8000
+
+# Run stress test with 100 requests in batches of 10, 20, 30, 40
+python cli.py stress-test --max-requests 100 --batch-size 10
+
+# Real-time monitoring dashboard (like htop for LLM servers)
+python cli.py monitor --test-requests --refresh 0.5
 
 # Use different model
 python cli.py generate --model gpt2-medium --text "In a galaxy far, far away"

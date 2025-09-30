@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint test test-fast test-all run-cli run-api predict generate benchmark
+.PHONY: setup fmt lint test test-fast test-all run-cli run-api predict generate benchmark monitor stress-test rapid-test
 
 setup:
 	uv sync --group dev --group test
@@ -43,3 +43,12 @@ compare:
 
 benchmark:
 	uv run python cli.py benchmark
+
+monitor:
+	uv run python cli.py monitor
+
+stress-test:
+	uv run python cli.py stress-test
+
+rapid-test:
+	uv run python cli.py rapid-test
