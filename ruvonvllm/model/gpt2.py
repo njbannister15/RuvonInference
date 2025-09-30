@@ -738,3 +738,140 @@ class GPT2Model:
             )
 
         return batch_sequences
+
+    def generate_continuous_step(
+        self,
+        active_requests: List,
+        past_key_values: Optional[Any] = None,
+        show_progress: bool = False,
+    ) -> tuple:
+        """
+        Generate the next token for all active requests in continuous batching.
+
+        This is the core of continuous batching - generating one token at a time
+        for a dynamic batch of requests that can change composition between steps.
+
+        Args:
+            active_requests: List of ContinuousRequest objects currently active
+            past_key_values: Cached key-value pairs from previous steps
+            show_progress: Whether to print progress information
+
+        Returns:
+            Tuple of (next_tokens, updated_past_key_values, request_finished_flags)
+        """
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        if not active_requests:
+            return [], None, []
+
+        batch_size = len(active_requests)
+        if show_progress:
+            print(f"🔄 Continuous generation step for {batch_size} active requests")
+
+        # Prepare input for current step
+        if past_key_values is None:
+            # First step: process full input sequences (prefill)
+            max_input_len = max(len(req.input_tokens) for req in active_requests)
+
+            # Pad all input sequences to same length
+            batch_input_ids = []
+            attention_mask = []
+
+            for req in active_requests:
+                # Pad sequence to max length (left padding for GPT-2)
+                padded_seq = req.input_tokens.copy()
+                padding_needed = max_input_len - len(padded_seq)
+                padded_seq = [0] * padding_needed + padded_seq
+
+                # Create attention mask (0 for padding, 1 for real tokens)
+                mask = [0] * padding_needed + [1] * len(req.input_tokens)
+
+                batch_input_ids.append(padded_seq)
+                attention_mask.append(mask)
+
+            input_tensor = torch.tensor(
+                batch_input_ids, dtype=torch.long, device=self.device
+            )
+            attention_tensor = torch.tensor(
+                attention_mask, dtype=torch.long, device=self.device
+            )
+
+            if show_progress:
+                print(f"  Prefill step: input shape {input_tensor.shape}")
+
+        else:
+            # Subsequent steps: just process last generated token for each request
+            last_tokens = []
+            for req in active_requests:
+                if req.generated_tokens:
+                    last_tokens.append([req.generated_tokens[-1]])
+                else:
+                    # This shouldn't happen in continuous batching, but handle gracefully
+                    last_tokens.append([req.input_tokens[-1]])
+
+            input_tensor = torch.tensor(
+                last_tokens, dtype=torch.long, device=self.device
+            )
+            attention_tensor = None  # Not needed for subsequent steps with cache
+
+            if show_progress:
+                print(f"  Generation step: input shape {input_tensor.shape}")
+
+        # Forward pass through model
+        with torch.no_grad():
+            if attention_tensor is not None:
+                # Prefill step with attention mask
+                outputs = self.model(
+                    input_tensor,
+                    attention_mask=attention_tensor,
+                    past_key_values=past_key_values,
+                    use_cache=True,
+                )
+            else:
+                # Generation step with cache
+                outputs = self.model(
+                    input_tensor,
+                    past_key_values=past_key_values,
+                    use_cache=True,
+                )
+
+            logits = outputs.logits  # Shape: (batch_size, seq_len, vocab_size)
+            new_past_key_values = outputs.past_key_values
+
+        # Sample next tokens for each request
+        next_tokens = []
+        finished_flags = []
+
+        for i, req in enumerate(active_requests):
+            # Get logits for the last position of this sequence
+            sequence_logits = logits[i, -1, :]  # Shape: (vocab_size,)
+
+            # Sample next token using request's sampling parameters
+            next_token_id = sample_token(
+                sequence_logits,
+                temperature=req.temperature,
+                top_k=req.top_k,
+                top_p=req.top_p,
+            )
+
+            next_tokens.append(next_token_id)
+
+            # Add token to request's generated sequence
+            req.generated_tokens.append(next_token_id)
+            req.generation_step += 1
+
+            # Check if this request should finish
+            is_finished = len(req.generated_tokens) >= req.max_tokens or (
+                hasattr(self.model.config, "eos_token_id")
+                and next_token_id == self.model.config.eos_token_id
+            )
+
+            finished_flags.append(is_finished)
+
+            if show_progress and is_finished:
+                print(
+                    f"    Request {req.id} finished after {len(req.generated_tokens)} tokens"
+                )
+
+        return next_tokens, new_past_key_values, finished_flags

@@ -21,6 +21,7 @@ from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 from ruvonvllm.sampling.strategies import sample_token
 from ruvonvllm.api.queue import request_queue, RequestStatus
 from ruvonvllm.api.batched_queue import batched_request_queue
+from ruvonvllm.api.continuous_queue import continuous_scheduler
 
 
 class CompletionRequest(BaseModel):
@@ -537,13 +538,23 @@ def batched_queue_processor():
 
 
 # Read queue mode from environment variable (set by CLI)
-USE_BATCHED_QUEUE = os.getenv("USE_BATCHED_QUEUE", "True").lower() == "true"
+QUEUE_MODE = os.getenv(
+    "QUEUE_MODE", "batched"
+).lower()  # sequential, batched, continuous
 
 # Start the appropriate queue processor
-if USE_BATCHED_QUEUE:
+if QUEUE_MODE == "continuous":
+    # Start continuous batching processor
+    continuous_processor_thread = threading.Thread(
+        target=lambda: asyncio.run(continuous_scheduler.continuous_generation_loop()),
+        daemon=True,
+    )
+    continuous_processor_thread.start()
+    print("⚡ Started continuous batching processor (TRUE CONTINUOUS BATCHING)")
+elif QUEUE_MODE == "batched":
     batched_queue_thread = threading.Thread(target=batched_queue_processor, daemon=True)
     batched_queue_thread.start()
-    print("🚀 Started batched queue processor (CONTINUOUS BATCHTING)")
+    print("🚀 Started batched queue processor (PREFILL BATCHING)")
 else:
     print("📋 Using sequential queue processor (SEQUENTIAL PROCESSING)")
 
@@ -608,7 +619,41 @@ async def create_completion(request: CompletionRequest):
                 detail="Streaming not supported with queue processing in Part 6",
             )
         else:
-            if USE_BATCHED_QUEUE:
+            if QUEUE_MODE == "continuous":
+                # Add request to continuous scheduler (Part 8)
+                request_id = continuous_scheduler.add_request(request)
+
+                # Wait for request to complete
+                max_wait_time = 300  # 5 minutes timeout
+                start_time = time.time()
+
+                while time.time() - start_time < max_wait_time:
+                    continuous_request = continuous_scheduler.get_request_status(
+                        request_id
+                    )
+
+                    if continuous_request is None:
+                        raise HTTPException(
+                            status_code=500,
+                            detail="Request not found in continuous scheduler",
+                        )
+
+                    if continuous_request["status"] == "completed":
+                        return continuous_request["result"]
+
+                    elif continuous_request["status"] == "failed":
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Request failed: {continuous_request.get('error', 'Unknown error')}",
+                        )
+
+                    # Still processing, wait a bit
+                    await asyncio.sleep(0.1)
+
+                # Timeout
+                raise HTTPException(status_code=408, detail="Request timeout")
+
+            elif QUEUE_MODE == "batched":
                 # Add request to batched queue (Part 7)
                 request_id = batched_request_queue.add_request(request)
 
@@ -715,9 +760,14 @@ async def get_queue_status():
     Get detailed queue status and statistics.
 
     Returns:
-        Queue metrics and current status - batched or sequential based on mode
+        Queue metrics and current status - continuous, batched, or sequential based on mode
     """
-    if USE_BATCHED_QUEUE:
+    if QUEUE_MODE == "continuous":
+        stats = continuous_scheduler.stats
+        stats["mode"] = "continuous"
+        stats["part"] = 8
+        return stats
+    elif QUEUE_MODE == "batched":
         stats = batched_request_queue.stats
         stats["mode"] = "batched"
         stats["part"] = 7
@@ -740,7 +790,9 @@ async def get_recent_completions(limit: int = 20):
     Returns:
         List of recent completion data including prompts and responses from appropriate queue
     """
-    if USE_BATCHED_QUEUE:
+    if QUEUE_MODE == "continuous":
+        return continuous_scheduler.get_recent_completions(limit)
+    elif QUEUE_MODE == "batched":
         return batched_request_queue.get_recent_completions(limit)
     else:
         return request_queue.get_recent_completions(limit)

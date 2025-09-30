@@ -92,10 +92,18 @@ def serve(
     host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host to bind to"),
     port: int = typer.Option(8000, "--port", "-p", help="Port to bind to"),
     reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload"),
+    queue_mode: str = typer.Option(
+        "batched",
+        "--queue-mode",
+        "-q",
+        help="Queue processing mode: sequential (Part 6), batched (Part 7), continuous (Part 8)",
+    ),
+    # Keep the old parameter for backwards compatibility
     use_batched_queue: bool = typer.Option(
-        True,
+        None,
         "--use-batched-queue/--no-batched-queue",
-        help="Use Part 7 batched queue (default) or Part 6 sequential queue",
+        help="[DEPRECATED] Use --queue-mode instead",
+        hidden=True,
     ),
 ):
     """
@@ -108,20 +116,35 @@ def serve(
     console.print(create_header())
     console.print()
 
+    # Handle backwards compatibility
+    if use_batched_queue is not None:
+        queue_mode = "batched" if use_batched_queue else "sequential"
+        console.print(
+            "[yellow]⚠️  WARNING: --use-batched-queue is deprecated, use --queue-mode instead[/yellow]"
+        )
+
+    # Validate queue mode
+    valid_modes = ["sequential", "batched", "continuous"]
+    if queue_mode not in valid_modes:
+        console.print(
+            f"[red]❌ Invalid queue mode: {queue_mode}. Valid modes: {', '.join(valid_modes)}[/red]"
+        )
+        raise typer.Exit(1)
+
     # Determine queue mode display
-    queue_mode = (
-        "Part 7: Continuous Batching"
-        if use_batched_queue
-        else "Part 6: Sequential Processing"
-    )
-    queue_style = "cyan" if use_batched_queue else "yellow"
+    mode_info = {
+        "sequential": ("Part 6: Sequential Processing", "yellow"),
+        "batched": ("Part 7: Prefill Batching", "cyan"),
+        "continuous": ("Part 8: True Continuous Batching", "magenta"),
+    }
+    queue_display, queue_style = mode_info[queue_mode]
 
     # Show server info
     server_panel = Panel(
         f"🌐 Starting RuvonVLLM API Server\n"
         f"📍 Address: [bold cyan]http://{host}:{port}[/bold cyan]\n"
         f"🔄 Auto-reload: [bold cyan]{'Enabled' if reload else 'Disabled'}[/bold cyan]\n"
-        f"📦 Queue Mode: [bold {queue_style}]{queue_mode}[/bold {queue_style}]\n"
+        f"📦 Queue Mode: [bold {queue_style}]{queue_display}[/bold {queue_style}]\n"
         f"📖 API Docs: [bold cyan]http://{host}:{port}/docs[/bold cyan]\n"
         f"🩺 Health Check: [bold cyan]http://{host}:{port}/health[/bold cyan]",
         title="🚀 RuvonVLLM API Server",
@@ -161,7 +184,7 @@ curl -X POST http://localhost:8000/completions \\
     # Set environment variable for queue mode
     import os
 
-    os.environ["USE_BATCHED_QUEUE"] = str(use_batched_queue)
+    os.environ["QUEUE_MODE"] = queue_mode
 
     # Start the server
     console.print("🚀 [bold green]Starting server...[/bold green]")
