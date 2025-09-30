@@ -484,7 +484,7 @@ def benchmark(
         "Time per Token",
         f"{results['time_per_token_no_cache']:.3f}s",
         f"{results['time_per_token_with_cache']:.3f}s",
-        f"{results['time_per_token_no_cache']/results['time_per_token_with_cache']:.1f}x faster",
+        f"{results['time_per_token_no_cache'] / results['time_per_token_with_cache']:.1f}x faster",
     )
 
     efficiency = (
@@ -493,7 +493,7 @@ def benchmark(
     results_table.add_row(
         "Efficiency Gain",
         "100%",
-        f"{100-efficiency:.1f}%",
+        f"{100 - efficiency:.1f}%",
         f"{efficiency:.1f}% less time",
     )
 
@@ -542,6 +542,83 @@ def benchmark(
 
 
 @app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host to bind to"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to bind to"),
+    reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload"),
+):
+    """
+    🌐 Start the HTTP API server
+
+    This starts the FastAPI server with streaming text completion endpoints,
+    demonstrating Day 4's HTTP server with /completions endpoint.
+    """
+    import uvicorn
+
+    # Show header
+    console.print(create_header())
+    console.print()
+
+    # Show server info
+    server_panel = Panel(
+        f"🌐 Starting RuvonVLLM API Server\n"
+        f"📍 Address: [bold cyan]http://{host}:{port}[/bold cyan]\n"
+        f"🔄 Auto-reload: [bold cyan]{'Enabled' if reload else 'Disabled'}[/bold cyan]\n"
+        f"📖 API Docs: [bold cyan]http://{host}:{port}/docs[/bold cyan]\n"
+        f"🩺 Health Check: [bold cyan]http://{host}:{port}/health[/bold cyan]",
+        title="🚀 Day 4: HTTP Server with Streaming",
+        style="green",
+        border_style="green",
+    )
+    console.print(server_panel)
+    console.print()
+
+    # Instructions
+    instructions_text = """
+[bold blue]📋 Quick Test Commands:[/bold blue]
+
+[bold yellow]1. Health Check:[/bold yellow]
+```bash
+curl http://localhost:8000/health
+```
+
+[bold yellow]2. Non-streaming completion:[/bold yellow]
+```bash
+curl -X POST http://localhost:8000/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{"prompt": "Once upon a time", "max_tokens": 10}'
+```
+
+[bold yellow]3. Streaming completion:[/bold yellow]
+```bash
+curl -X POST http://localhost:8000/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{"prompt": "The future of AI is", "max_tokens": 15, "stream": true}'
+```
+    """
+
+    console.print(Panel(instructions_text, style="blue", border_style="blue"))
+    console.print()
+
+    # Start the server
+    console.print("🚀 [bold green]Starting server...[/bold green]")
+    console.print()
+
+    try:
+        uvicorn.run(
+            "ruvonvllm.api.server:app",
+            host=host,
+            port=port,
+            reload=reload,
+            log_level="info",
+        )
+    except KeyboardInterrupt:
+        console.print("\n🛑 [bold red]Server stopped by user[/bold red]")
+    except Exception as e:
+        console.print(f"\n❌ [bold red]Server error: {e}[/bold red]")
+
+
+@app.command()
 def info():
     """
     ℹ️  Show information about RuvonVLLM
@@ -563,9 +640,9 @@ over 20 days. This project demonstrates modern LLM serving techniques including:
 • ⚡ KV-cache optimization for 10-20x speedup
 • 🏁 Performance benchmarking tools
 • 💻 Beautiful CLI interface with Rich + Typer
+• 🌐 HTTP API server with streaming (/completions)
 
 [bold yellow]🎯 Upcoming Features:[/bold yellow]
-• 🌐 HTTP API server (Day 4)
 • 🎲 Advanced sampling strategies (Day 5)
 • ⚡ Continuous batching (Days 6-8)
 • 📊 Telemetry and metrics (Day 10)
@@ -591,6 +668,9 @@ python cli.py generate --text "Science is" --show-steps
 
 # Benchmark KV-cache performance
 python cli.py benchmark --max-length 30
+
+# Start HTTP API server
+python cli.py serve --port 8000
 
 # Use different model
 python cli.py generate --model gpt2-medium --text "In a galaxy far, far away"

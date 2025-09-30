@@ -26,6 +26,9 @@ test-cov:
 run-cli:
 	uv run python cli.py
 
+run-api:
+	uv run python cli.py serve
+
 predict:
 	uv run python cli.py predict
 

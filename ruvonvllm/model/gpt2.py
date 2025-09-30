@@ -246,7 +246,7 @@ class GPT2Model:
                 current_ids = torch.tensor([sequence[-1]]).unsqueeze(0).to(self.device)
                 if show_progress:
                     print(
-                        f"Step {step + 1}: Processing only new token (cached: {len(sequence)-1} tokens)"
+                        f"Step {step + 1}: Processing only new token (cached: {len(sequence) - 1} tokens)"
                     )
 
             # Forward pass with KV-cache
