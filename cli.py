@@ -25,24 +25,6 @@ app.add_typer(monitoring.app, name="monitor", help="📊 Real-time monitoring co
 app.add_typer(testing.app, name="test", help="🧪 Testing and load testing commands")
 
 
-# Add root-level shortcuts for commonly used commands
-@app.command()
-def predict(
-    text: str = typer.Option("Hello world", "--text", "-t", help="Text to process"),
-    model_name: str = typer.Option(
-        "gpt2", "--model", "-m", help="Model to use (gpt2, gpt2-medium, etc.)"
-    ),
-    device: str = typer.Option(
-        "cpu", "--device", "-d", help="Device to run on (cpu or cuda)"
-    ),
-    top_k: int = typer.Option(
-        5, "--top-k", "-k", help="Number of top predictions to show"
-    ),
-):
-    """🎯 Predict next token for given text"""
-    generate.predict(text, model_name, device, top_k)
-
-
 @app.command()
 def sample(
     text: str = typer.Option(
@@ -243,9 +225,6 @@ over 20 days. This project demonstrates modern LLM serving techniques including:
 
 [bold cyan]Usage:[/bold cyan]
 ```
-# Predict next token with default "Hello world"
-python cli.py predict
-
 # Generate text with default "Once upon a time"
 python cli.py generate generate
 

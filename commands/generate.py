@@ -253,7 +253,7 @@ def predict(
     console.print(Panel(success_text, style="green", border_style="green"))
 
 
-@app.command()
+@app.command(name="gen", help="🎭 Generate text using greedy decoding")
 def generate(
     text: str = typer.Option(
         "Once upon a time", "--text", "-t", help="Starting text prompt"
