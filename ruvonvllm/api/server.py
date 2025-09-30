@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from ruvonvllm.model.gpt2 import GPT2Model
 from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
-from ruvonvllm.api.strategies.queue import request_queue
+from ruvonvllm.api.sequential_queue import sequential_queue
 from ruvonvllm.api.batched_queue import batched_request_queue
 from ruvonvllm.api.continuous_queue import continuous_scheduler
 from ruvonvllm.api.strategies.factory import QueueStrategyFactory
@@ -208,7 +208,7 @@ def queue_processor():
     while True:
         try:
             # Get next request from queue
-            queued_request = request_queue.get_next_request()
+            queued_request = sequential_queue.get_next_request()
 
             if queued_request is None:
                 # No requests in queue, sleep briefly
@@ -216,18 +216,18 @@ def queue_processor():
                 continue
 
             # Mark request as processing
-            request_queue.start_processing(queued_request.id)
+            sequential_queue.start_processing(queued_request.id)
 
             try:
                 # Process the request
                 result = process_request_sync(queued_request.request_data)
 
                 # Mark as completed
-                request_queue.complete_request(queued_request.id, result)
+                sequential_queue.complete_request(queued_request.id, result)
 
             except Exception as e:
                 # Mark as failed
-                request_queue.fail_request(queued_request.id, str(e))
+                sequential_queue.fail_request(queued_request.id, str(e))
                 logger.error(f"Request {queued_request.id} failed: {e}")
 
         except Exception as e:
@@ -413,7 +413,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint with queue status."""
-    queue_stats = request_queue.stats
+    queue_stats = sequential_queue.stats
     return {
         "status": "healthy",
         "models_loaded": list(model_instances.keys()),
@@ -471,7 +471,7 @@ async def get_request_status(request_id: str):
     Returns:
         Request status information
     """
-    queued_request = request_queue.get_request_status(request_id)
+    queued_request = sequential_queue.get_request_status(request_id)
 
     if queued_request is None:
         raise HTTPException(status_code=404, detail="Request not found")

@@ -374,4 +374,4 @@ class RequestQueue:
 
 
 # Global request queue instance
-request_queue = RequestQueue()
+sequential_queue = RequestQueue()
