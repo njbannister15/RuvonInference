@@ -19,9 +19,10 @@ from pydantic import BaseModel, Field
 from ruvonvllm.model.gpt2 import GPT2Model
 from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 from ruvonvllm.sampling.strategies import sample_token
-from ruvonvllm.api.queue import request_queue, RequestStatus
+from ruvonvllm.api.queue import request_queue
 from ruvonvllm.api.batched_queue import batched_request_queue
 from ruvonvllm.api.continuous_queue import continuous_scheduler
+from ruvonvllm.api.strategies.factory import QueueStrategyFactory
 
 
 class CompletionRequest(BaseModel):
@@ -542,6 +543,9 @@ QUEUE_MODE = os.getenv(
     "QUEUE_MODE", "batched"
 ).lower()  # sequential, batched, continuous
 
+# Initialize queue strategy using factory pattern
+queue_strategy = QueueStrategyFactory.create_strategy(QUEUE_MODE)
+
 # Start the appropriate queue processor
 if QUEUE_MODE == "continuous":
     # Start continuous batching processor
@@ -599,123 +603,32 @@ async def health_check():
 @app.post("/completions")
 async def create_completion(request: CompletionRequest):
     """
-    Create a text completion.
+    Create a text completion using the configured queue strategy.
 
-    This endpoint accepts a text prompt and adds it to the processing queue.
-    For Part 6, we handle multiple sequential requests by queuing them and
-    processing one at a time.
+    This endpoint uses the Strategy pattern to delegate request processing
+    to the appropriate queue strategy (sequential, batched, or continuous).
+    This design provides clean separation of concerns and testability.
 
     Args:
         request: Completion request parameters
 
     Returns:
         Streaming or complete response based on request.stream
+
+    Raises:
+        HTTPException: If streaming is requested (not yet supported)
+                      or if request processing fails
     """
     try:
         if request.stream:
-            # Streaming not yet supported with queue (Part 6 focuses on sequential non-streaming)
+            # Streaming not yet supported with queue processing
             raise HTTPException(
                 status_code=400,
-                detail="Streaming not supported with queue processing in Part 6",
+                detail=f"Streaming not supported with {queue_strategy.strategy_name} queue processing",
             )
-        else:
-            if QUEUE_MODE == "continuous":
-                # Add request to continuous scheduler (Part 8)
-                request_id = continuous_scheduler.add_request(request)
 
-                # Wait for request to complete
-                max_wait_time = 300  # 5 minutes timeout
-                start_time = time.time()
-
-                while time.time() - start_time < max_wait_time:
-                    continuous_request = continuous_scheduler.get_request_status(
-                        request_id
-                    )
-
-                    if continuous_request is None:
-                        raise HTTPException(
-                            status_code=500,
-                            detail="Request not found in continuous scheduler",
-                        )
-
-                    if continuous_request["status"] == "completed":
-                        return continuous_request["result"]
-
-                    elif continuous_request["status"] == "failed":
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Request failed: {continuous_request.get('error', 'Unknown error')}",
-                        )
-
-                    # Still processing, wait a bit
-                    await asyncio.sleep(0.1)
-
-                # Timeout
-                raise HTTPException(status_code=408, detail="Request timeout")
-
-            elif QUEUE_MODE == "batched":
-                # Add request to batched queue (Part 7)
-                request_id = batched_request_queue.add_request(request)
-
-                # Wait for request to complete
-                max_wait_time = 300  # 5 minutes timeout
-                start_time = time.time()
-
-                while time.time() - start_time < max_wait_time:
-                    batched_request = batched_request_queue.get_request_status(
-                        request_id
-                    )
-
-                    if batched_request is None:
-                        raise HTTPException(
-                            status_code=500, detail="Request not found in batched queue"
-                        )
-
-                    if batched_request.status == "completed":
-                        return batched_request.result
-
-                    elif batched_request.status == "failed":
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Request failed: {batched_request.error}",
-                        )
-
-                    # Still processing, wait a bit
-                    await asyncio.sleep(0.1)
-
-                # Timeout
-                raise HTTPException(status_code=408, detail="Request timeout")
-
-            else:
-                # Add request to sequential queue (Part 6)
-                request_id = request_queue.add_request(request)
-
-                # Wait for request to complete
-                max_wait_time = 300  # 5 minutes timeout
-                start_time = time.time()
-
-                while time.time() - start_time < max_wait_time:
-                    queued_request = request_queue.get_request_status(request_id)
-
-                    if queued_request is None:
-                        raise HTTPException(
-                            status_code=500, detail="Request not found in queue"
-                        )
-
-                    if queued_request.status == RequestStatus.COMPLETED:
-                        return queued_request.result
-
-                    elif queued_request.status == RequestStatus.FAILED:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Request failed: {queued_request.error}",
-                        )
-
-                    # Still processing, wait a bit
-                    await asyncio.sleep(0.1)
-
-                # Timeout
-                raise HTTPException(status_code=408, detail="Request timeout")
+        # Delegate to the configured strategy
+        return await queue_strategy.process_request(request)
 
     except HTTPException:
         raise
@@ -757,45 +670,26 @@ async def get_request_status(request_id: str):
 @app.get("/queue")
 async def get_queue_status():
     """
-    Get detailed queue status and statistics.
+    Get detailed queue status and statistics using the configured strategy.
 
     Returns:
-        Queue metrics and current status - continuous, batched, or sequential based on mode
+        Queue metrics and current status from the active strategy
     """
-    if QUEUE_MODE == "continuous":
-        stats = continuous_scheduler.stats
-        stats["mode"] = "continuous"
-        stats["part"] = 8
-        return stats
-    elif QUEUE_MODE == "batched":
-        stats = batched_request_queue.stats
-        stats["mode"] = "batched"
-        stats["part"] = 7
-        return stats
-    else:
-        stats = request_queue.stats
-        stats["mode"] = "sequential"
-        stats["part"] = 6
-        return stats
+    return queue_strategy.get_stats()
 
 
 @app.get("/queue/recent")
 async def get_recent_completions(limit: int = 20):
     """
-    Get recently completed requests with their prompts and responses.
+    Get recently completed requests using the configured strategy.
 
     Args:
         limit: Maximum number of recent completions to return (default: 20)
 
     Returns:
-        List of recent completion data including prompts and responses from appropriate queue
+        List of recent completion data from the active strategy
     """
-    if QUEUE_MODE == "continuous":
-        return continuous_scheduler.get_recent_completions(limit)
-    elif QUEUE_MODE == "batched":
-        return batched_request_queue.get_recent_completions(limit)
-    else:
-        return request_queue.get_recent_completions(limit)
+    return queue_strategy.get_recent_completions(limit)
 
 
 if __name__ == "__main__":
