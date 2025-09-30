@@ -35,5 +35,11 @@ predict:
 generate:
 	uv run python cli.py generate
 
+sample:
+	uv run python cli.py sample
+
+compare:
+	uv run python cli.py compare
+
 benchmark:
 	uv run python cli.py benchmark

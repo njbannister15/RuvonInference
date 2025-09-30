@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from ruvonvllm.model.gpt2 import GPT2Model
 from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+from ruvonvllm.sampling.strategies import sample_token
 
 
 class CompletionRequest(BaseModel):
@@ -24,7 +25,7 @@ class CompletionRequest(BaseModel):
     Request model for text completion endpoint.
 
     This follows OpenAI's completion API structure while supporting our
-    current greedy generation capabilities.
+    advanced sampling capabilities for creative text generation.
     """
 
     prompt: str = Field(..., description="The text prompt to complete")
@@ -35,6 +36,26 @@ class CompletionRequest(BaseModel):
     stream: bool = Field(default=False, description="Whether to stream the response")
     use_cache: bool = Field(
         default=True, description="Whether to use KV-cache optimization"
+    )
+
+    # Sampling parameters
+    temperature: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=2.0,
+        description="Temperature for sampling (0.1=focused, 1.0=balanced, 2.0=creative)",
+    )
+    top_k: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description="Top-k sampling: only consider k most likely tokens",
+    )
+    top_p: Optional[float] = Field(
+        default=None,
+        ge=0.01,
+        le=1.0,
+        description="Nucleus sampling: dynamic cutoff based on cumulative probability",
     )
 
 
@@ -173,9 +194,14 @@ async def generate_completion_stream(
 
                 logits = outputs.logits
 
-            # Get next token (greedy selection)
+            # Get next token using sampling
             next_token_logits = logits[0, -1, :]
-            next_token_id = torch.argmax(next_token_logits).item()
+            next_token_id = sample_token(
+                next_token_logits,
+                temperature=request.temperature,
+                top_k=request.top_k,
+                top_p=request.top_p,
+            )
             current_sequence.append(next_token_id)
 
             # Decode the new token
@@ -255,15 +281,16 @@ def generate_completion_sync(request: CompletionRequest) -> CompletionResponse:
     # Tokenize input
     input_ids = tokenizer.encode(request.prompt, return_tensors=True)
 
-    # Generate text
-    if request.use_cache:
-        generated_tokens = model.generate_greedy_with_cache(
-            input_ids, request.max_tokens, show_progress=False
-        )
-    else:
-        generated_tokens = model.generate_greedy(
-            input_ids, request.max_tokens, show_progress=False
-        )
+    # Generate text using sampling
+    generated_tokens = model.generate_with_sampling(
+        input_ids,
+        max_length=request.max_tokens,
+        temperature=request.temperature,
+        top_k=request.top_k,
+        top_p=request.top_p,
+        use_cache=request.use_cache,
+        show_progress=False,
+    )
 
     # Decode the full text
     full_text = tokenizer.decode(generated_tokens)
@@ -299,8 +326,8 @@ async def root():
     return {
         "message": "🚀 RuvonVLLM API - Tiny vLLM Inference Engine",
         "version": "0.1.0",
-        "day": 4,
-        "description": "HTTP Server with streaming text completion",
+        "day": 5,
+        "description": "Advanced sampling strategies: temperature, top-k, nucleus sampling",
         "endpoints": {
             "/completions": "Text completion endpoint (POST)",
             "/health": "Health check endpoint (GET)",

@@ -9,6 +9,8 @@ import torch
 from transformers import DynamicCache, GPT2LMHeadModel, GPT2Config
 from typing import Dict, Any, Optional, List
 
+from ruvonvllm.sampling.strategies import sample_token, get_sampling_info
+
 
 class GPT2Model:
     """
@@ -377,5 +379,199 @@ class GPT2Model:
         )
         print(f"Speedup:          {speedup:.1f}x faster! 🚀")
         print("=" * 60)
+
+        return results
+
+    def generate_with_sampling(
+        self,
+        input_ids: torch.Tensor,
+        max_length: int = 20,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+        top_p: Optional[float] = None,
+        use_cache: bool = True,
+        show_progress: bool = False,
+    ) -> List[int]:
+        """
+        Generate text using advanced sampling strategies.
+
+        This method implements creative text generation by sampling from probability
+        distributions rather than always choosing the most likely token (greedy).
+
+        Sampling strategies:
+        1. Temperature: Controls randomness vs confidence
+           - Low (0.1-0.7): More focused, deterministic
+           - Medium (0.8-1.2): Balanced creativity
+           - High (1.3-2.0): More random, creative
+
+        2. Top-k: Only consider k most likely tokens
+           - Low k (1-10): Conservative, coherent
+           - Medium k (20-100): Balanced variety
+           - High k (200+): More diverse choices
+
+        3. Top-p (nucleus): Dynamic vocabulary based on cumulative probability
+           - Low p (0.1-0.5): Very focused
+           - Medium p (0.6-0.9): Balanced
+           - High p (0.95-1.0): More inclusive
+
+        Args:
+            input_ids: Starting tokens with shape (1, sequence_length)
+            max_length: Maximum number of NEW tokens to generate
+            temperature: Randomness control (default: 1.0 = no change)
+            top_k: Number of top tokens to consider (default: None = no filtering)
+            top_p: Cumulative probability threshold (default: None = no filtering)
+            use_cache: Whether to use KV-cache optimization (default: True)
+            show_progress: Whether to print generation details (default: False)
+
+        Returns:
+            List of ALL token IDs (input + generated tokens)
+        """
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        # Convert tensor to list for easier manipulation
+        sequence = input_ids.squeeze().tolist()
+        original_length = len(sequence)
+
+        if show_progress:
+            print(
+                f"Starting sampling generation with {original_length} input tokens..."
+            )
+            print(f"Parameters: temp={temperature}, top_k={top_k}, top_p={top_p}")
+
+        # Initialize KV cache if using cached generation
+        past_key_values = None if use_cache else None
+
+        # Generate tokens one by one
+        for step in range(max_length):
+            # Prepare input for this step
+            if past_key_values is None or not use_cache:
+                # First step or no caching: process full sequence
+                current_ids = torch.tensor(sequence).unsqueeze(0).to(self.device)
+            else:
+                # Subsequent steps with caching: only process new token
+                current_ids = torch.tensor([sequence[-1]]).unsqueeze(0).to(self.device)
+
+            # Forward pass
+            with torch.no_grad():
+                if use_cache:
+                    outputs = self.model(
+                        current_ids,
+                        past_key_values=past_key_values,
+                        use_cache=True,
+                    )
+                    past_key_values = outputs.past_key_values
+                else:
+                    outputs = self.model(current_ids)
+
+                logits = outputs.logits
+
+            # Get logits for the last position
+            next_token_logits = logits[0, -1, :]
+
+            # Use sampling instead of greedy selection
+            next_token_id = sample_token(
+                next_token_logits,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+            )
+
+            # Add to sequence
+            sequence.append(next_token_id)
+
+            if show_progress:
+                # Show sampling info and generated token
+                sampling_info = get_sampling_info(
+                    next_token_logits, temperature, top_k, top_p
+                )
+
+                from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+
+                tokenizer = GPT2TokenizerWrapper(self.model_name)
+                token_text = tokenizer.decode([next_token_id])
+
+                print(f"Step {step + 1}:")
+                print(f"  Generated token: {next_token_id} -> '{token_text}'")
+                print(f"  Top token prob: {sampling_info['top_token_prob']:.3f}")
+                print(f"  Effective vocab: {sampling_info['effective_vocab_size']}")
+                print(f"  Entropy change: {sampling_info['entropy_change']:.3f}")
+
+            # Check for end-of-sequence token
+            if (
+                hasattr(self.model.config, "eos_token_id")
+                and next_token_id == self.model.config.eos_token_id
+            ):
+                if show_progress:
+                    print("Generated end-of-sequence token, stopping early.")
+                break
+
+        if show_progress:
+            print(
+                f"Sampling generation complete! Generated {len(sequence) - original_length} new tokens."
+            )
+
+        return sequence
+
+    def compare_sampling_strategies(
+        self,
+        input_ids: torch.Tensor,
+        max_length: int = 10,
+        num_samples: int = 3,
+    ) -> Dict[str, List[str]]:
+        """
+        Compare different sampling strategies on the same input.
+
+        This method generates multiple outputs using different sampling approaches
+        to demonstrate the variety and creativity that sampling can provide.
+
+        Args:
+            input_ids: Starting tokens
+            max_length: Number of tokens to generate
+            num_samples: Number of samples per strategy
+
+        Returns:
+            Dictionary mapping strategy names to lists of generated texts
+        """
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+
+        tokenizer = GPT2TokenizerWrapper(self.model_name)
+
+        prompt_text = tokenizer.decode(input_ids.squeeze().tolist())
+        strategies = {
+            "greedy": {"temperature": 0.1},
+            "low_temp": {"temperature": 0.7},
+            "medium_temp": {"temperature": 1.0},
+            "high_temp": {"temperature": 1.5},
+            "top_k_20": {"temperature": 0.8, "top_k": 20},
+            "top_k_50": {"temperature": 0.8, "top_k": 50},
+            "top_p_90": {"temperature": 0.8, "top_p": 0.9},
+            "top_p_95": {"temperature": 0.8, "top_p": 0.95},
+            "nucleus": {"temperature": 0.8, "top_k": 40, "top_p": 0.9},
+        }
+
+        results = {}
+
+        print(f"🎭 Comparing sampling strategies on: '{prompt_text}'")
+        print("=" * 60)
+
+        for strategy_name, params in strategies.items():
+            print(f"\n🎯 {strategy_name.upper()}: {params}")
+            strategy_outputs = []
+
+            for i in range(num_samples):
+                generated_tokens = self.generate_with_sampling(
+                    input_ids, max_length, use_cache=True, **params
+                )
+                full_text = tokenizer.decode(generated_tokens)
+                generated_part = full_text[len(prompt_text) :]
+                strategy_outputs.append(generated_part)
+
+                print(f"  {i + 1}: '{generated_part}'")
+
+            results[strategy_name] = strategy_outputs
 
         return results
