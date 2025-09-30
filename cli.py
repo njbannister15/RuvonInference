@@ -92,6 +92,11 @@ def serve(
     host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host to bind to"),
     port: int = typer.Option(8000, "--port", "-p", help="Port to bind to"),
     reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload"),
+    use_batched_queue: bool = typer.Option(
+        True,
+        "--use-batched-queue/--no-batched-queue",
+        help="Use Part 7 batched queue (default) or Part 6 sequential queue",
+    ),
 ):
     """
     🌐 Start the HTTP API server
@@ -103,14 +108,23 @@ def serve(
     console.print(create_header())
     console.print()
 
+    # Determine queue mode display
+    queue_mode = (
+        "Part 7: Continuous Batching"
+        if use_batched_queue
+        else "Part 6: Sequential Processing"
+    )
+    queue_style = "cyan" if use_batched_queue else "yellow"
+
     # Show server info
     server_panel = Panel(
         f"🌐 Starting RuvonVLLM API Server\n"
         f"📍 Address: [bold cyan]http://{host}:{port}[/bold cyan]\n"
         f"🔄 Auto-reload: [bold cyan]{'Enabled' if reload else 'Disabled'}[/bold cyan]\n"
+        f"📦 Queue Mode: [bold {queue_style}]{queue_mode}[/bold {queue_style}]\n"
         f"📖 API Docs: [bold cyan]http://{host}:{port}/docs[/bold cyan]\n"
         f"🩺 Health Check: [bold cyan]http://{host}:{port}/health[/bold cyan]",
-        title="🚀 Day 4: HTTP Server with Streaming",
+        title="🚀 RuvonVLLM API Server",
         style="green",
         border_style="green",
     )
@@ -143,6 +157,11 @@ curl -X POST http://localhost:8000/completions \\
 
     console.print(Panel(instructions_text, style="blue", border_style="blue"))
     console.print()
+
+    # Set environment variable for queue mode
+    import os
+
+    os.environ["USE_BATCHED_QUEUE"] = str(use_batched_queue)
 
     # Start the server
     console.print("🚀 [bold green]Starting server...[/bold green]")

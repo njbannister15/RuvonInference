@@ -575,3 +575,166 @@ class GPT2Model:
             results[strategy_name] = strategy_outputs
 
         return results
+
+    def generate_batch_with_sampling(
+        self,
+        batch_input_ids: List[torch.Tensor],
+        max_length: int = 20,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+        top_p: Optional[float] = None,
+        use_cache: bool = True,
+        show_progress: bool = False,
+    ) -> List[List[int]]:
+        """
+        Generate text for multiple requests in a single batched forward pass.
+
+        This is the core of continuous batching - processing multiple requests
+        simultaneously to improve throughput while maintaining the same memory footprint.
+
+        Args:
+            batch_input_ids: List of input token tensors, one per request
+            max_length: Maximum number of NEW tokens to generate per request
+            temperature: Randomness control for sampling
+            top_k: Number of top tokens to consider for sampling
+            top_p: Cumulative probability threshold for nucleus sampling
+            use_cache: Whether to use KV-cache optimization
+            show_progress: Whether to print generation details
+
+        Returns:
+            List of token sequences (one per input request)
+        """
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        if not batch_input_ids:
+            return []
+
+        batch_size = len(batch_input_ids)
+        if show_progress:
+            print(f"🚀 Starting batched generation for {batch_size} requests")
+
+        # Convert all inputs to lists for easier manipulation
+        batch_sequences = []
+        original_lengths = []
+
+        for input_ids in batch_input_ids:
+            sequence = input_ids.squeeze().tolist()
+            batch_sequences.append(sequence)
+            original_lengths.append(len(sequence))
+
+        # Track which sequences are still generating
+        active_sequences = list(range(batch_size))
+
+        # Initialize cache for batched processing
+        past_key_values = None
+
+        for step in range(max_length):
+            if not active_sequences:
+                break  # All sequences finished
+
+            if show_progress and step % 5 == 0:
+                print(
+                    f"  Step {step}/{max_length}, {len(active_sequences)} active sequences"
+                )
+
+            # Prepare current batch (only active sequences)
+            current_batch_ids = []
+            current_indices = []
+
+            for i, seq_idx in enumerate(active_sequences):
+                current_batch_ids.append([batch_sequences[seq_idx][-1]])  # Last token
+                current_indices.append(seq_idx)
+
+            # Pad the batch to the same length (in this case, all are length 1)
+            batch_tensor = torch.tensor(
+                current_batch_ids, dtype=torch.long, device=self.device
+            )
+
+            # Forward pass for the entire batch
+            with torch.no_grad():
+                if step == 0:
+                    # First step: process full sequences
+                    full_batch_ids = []
+                    max_seq_len = max(len(seq) for seq in batch_sequences)
+
+                    # Pad sequences to same length
+                    for seq_idx in active_sequences:
+                        seq = batch_sequences[seq_idx].copy()
+                        # Pad with tokenizer's pad token (0 for GPT-2)
+                        while len(seq) < max_seq_len:
+                            seq = [0] + seq  # Left padding
+                        full_batch_ids.append(seq)
+
+                    batch_tensor = torch.tensor(
+                        full_batch_ids, dtype=torch.long, device=self.device
+                    )
+
+                    # Create attention mask (1 for real tokens, 0 for padding)
+                    attention_mask = torch.zeros_like(batch_tensor)
+                    for i, seq_idx in enumerate(active_sequences):
+                        original_len = len(batch_sequences[seq_idx])
+                        attention_mask[i, -original_len:] = 1
+
+                    outputs = self.model(
+                        batch_tensor,
+                        attention_mask=attention_mask,
+                        past_key_values=past_key_values,
+                        use_cache=use_cache,
+                    )
+                else:
+                    # Subsequent steps: just process new tokens
+                    outputs = self.model(
+                        batch_tensor,
+                        past_key_values=past_key_values,
+                        use_cache=use_cache,
+                    )
+
+                logits = outputs.logits  # Shape: (batch_size, seq_len, vocab_size)
+
+                if use_cache:
+                    past_key_values = outputs.past_key_values
+
+            # Sample next tokens for each sequence in the batch
+            next_tokens = []
+            sequences_to_remove = []
+
+            for i, seq_idx in enumerate(current_indices):
+                # Get logits for the last position of this sequence
+                sequence_logits = logits[i, -1, :]  # Shape: (vocab_size,)
+
+                # Sample next token using the same strategies as single generation
+                next_token_id = sample_token(
+                    sequence_logits,
+                    temperature=temperature,
+                    top_k=top_k,
+                    top_p=top_p,
+                )
+
+                # Add token to sequence
+                batch_sequences[seq_idx].append(next_token_id)
+                next_tokens.append(next_token_id)
+
+                # Check if this sequence should stop
+                if (
+                    hasattr(self.model.config, "eos_token_id")
+                    and next_token_id == self.model.config.eos_token_id
+                ):
+                    sequences_to_remove.append(seq_idx)
+                    if show_progress:
+                        print(f"    Sequence {seq_idx} finished (EOS token)")
+
+            # Remove finished sequences from active list
+            for seq_idx in sequences_to_remove:
+                active_sequences.remove(seq_idx)
+
+        if show_progress:
+            total_generated = sum(
+                len(seq) - orig_len
+                for seq, orig_len in zip(batch_sequences, original_lengths)
+            )
+            print(
+                f"🎉 Batched generation complete! Generated {total_generated} total tokens"
+            )
+
+        return batch_sequences

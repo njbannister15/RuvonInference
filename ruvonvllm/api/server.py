@@ -7,6 +7,7 @@ that provides streaming text generation compatible with OpenAI-like interfaces.
 
 import asyncio
 import json
+import os
 import time
 import threading
 from typing import AsyncGenerator, Dict, Any, Optional
@@ -19,6 +20,7 @@ from ruvonvllm.model.gpt2 import GPT2Model
 from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 from ruvonvllm.sampling.strategies import sample_token
 from ruvonvllm.api.queue import request_queue, RequestStatus
+from ruvonvllm.api.batched_queue import batched_request_queue
 
 
 class CompletionRequest(BaseModel):
@@ -414,6 +416,138 @@ queue_thread = threading.Thread(target=queue_processor, daemon=True)
 queue_thread.start()
 
 
+def process_batch_sync(batch_requests: list) -> list:
+    """
+    Process a batch of requests using batched model inference.
+
+    This is the core of continuous batching - taking multiple requests
+    and processing them simultaneously in a single model forward pass.
+
+    Args:
+        batch_requests: List of CompletionRequest objects
+
+    Returns:
+        List of CompletionResponse objects
+    """
+    if not batch_requests:
+        return []
+
+    # Use the first request's model for the batch (assume all use same model)
+    model_name = batch_requests[0].model
+    model = get_model(model_name)
+    tokenizer = get_tokenizer(model_name)
+
+    # Tokenize all inputs
+    batch_input_ids = []
+    for request in batch_requests:
+        input_ids = tokenizer.encode(request.prompt, return_tensors=True)
+        batch_input_ids.append(input_ids)
+
+    # Generate text using batched inference
+    batch_generated_tokens = model.generate_batch_with_sampling(
+        batch_input_ids,
+        max_length=batch_requests[0].max_tokens,  # Use first request's settings
+        temperature=batch_requests[0].temperature,
+        top_k=batch_requests[0].top_k,
+        top_p=batch_requests[0].top_p,
+        use_cache=batch_requests[0].use_cache,
+        show_progress=False,
+    )
+
+    # Create responses for each request
+    responses = []
+    for i, (request, generated_tokens) in enumerate(
+        zip(batch_requests, batch_generated_tokens)
+    ):
+        # Decode the full text
+        full_text = tokenizer.decode(generated_tokens)
+        generated_text = full_text[len(request.prompt) :]  # Remove original prompt
+
+        # Create response
+        response = CompletionResponse(
+            id=f"cmpl-{int(time.time())}-{i}",
+            created=int(time.time()),
+            model=request.model,
+            choices=[
+                CompletionChoice(text=generated_text, index=0, finish_reason="stop")
+            ],
+            usage={
+                "prompt_tokens": len(batch_input_ids[i][0]),
+                "completion_tokens": len(generated_tokens) - len(batch_input_ids[i][0]),
+                "total_tokens": len(generated_tokens),
+            },
+        )
+        responses.append(response)
+
+    return responses
+
+
+def batched_queue_processor():
+    """
+    Background thread that processes requests from the batched queue.
+
+    This implements continuous batching by:
+    1. Collecting multiple requests into batches
+    2. Processing entire batches in single model calls
+    3. Distributing results back to individual requests
+
+    This should show "Processing: 2, 3, 4" instead of always "Processing: 1"
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info("Batched queue processor started")
+
+    while True:
+        try:
+            # Collect next batch of requests
+            batch = batched_request_queue.collect_next_batch()
+
+            if batch is None:
+                # No requests available, sleep briefly
+                time.sleep(0.05)  # 50ms sleep
+                continue
+
+            # Mark batch as processing
+            batched_request_queue.start_batch_processing(batch)
+
+            try:
+                # Extract request data from batch
+                request_data_list = [req.request_data for req in batch.requests]
+
+                # Process the entire batch in one model call
+                results = process_batch_sync(request_data_list)
+
+                # Mark batch as completed
+                batched_request_queue.complete_batch(batch.id, results)
+
+                logger.info(
+                    f"Processed batch {batch.id} with {batch.size} requests "
+                    f"in {batch.processing_time:.3f}s"
+                )
+
+            except Exception as e:
+                # Mark batch as failed
+                batched_request_queue.fail_batch(batch.id, str(e))
+                logger.error(f"Batch {batch.id} failed: {e}")
+
+        except Exception as e:
+            logger.error(f"Batched queue processor error: {e}")
+            time.sleep(1)  # Brief pause on error
+
+
+# Read queue mode from environment variable (set by CLI)
+USE_BATCHED_QUEUE = os.getenv("USE_BATCHED_QUEUE", "True").lower() == "true"
+
+# Start the appropriate queue processor
+if USE_BATCHED_QUEUE:
+    batched_queue_thread = threading.Thread(target=batched_queue_processor, daemon=True)
+    batched_queue_thread.start()
+    print("🚀 Started batched queue processor (CONTINUOUS BATCHTING)")
+else:
+    print("📋 Using sequential queue processor (SEQUENTIAL PROCESSING)")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="RuvonVLLM API",
@@ -474,35 +608,69 @@ async def create_completion(request: CompletionRequest):
                 detail="Streaming not supported with queue processing in Part 6",
             )
         else:
-            # Add request to queue
-            request_id = request_queue.add_request(request)
+            if USE_BATCHED_QUEUE:
+                # Add request to batched queue (Part 7)
+                request_id = batched_request_queue.add_request(request)
 
-            # Wait for request to complete
-            max_wait_time = 300  # 5 minutes timeout
-            start_time = time.time()
+                # Wait for request to complete
+                max_wait_time = 300  # 5 minutes timeout
+                start_time = time.time()
 
-            while time.time() - start_time < max_wait_time:
-                queued_request = request_queue.get_request_status(request_id)
-
-                if queued_request is None:
-                    raise HTTPException(
-                        status_code=500, detail="Request not found in queue"
+                while time.time() - start_time < max_wait_time:
+                    batched_request = batched_request_queue.get_request_status(
+                        request_id
                     )
 
-                if queued_request.status == RequestStatus.COMPLETED:
-                    return queued_request.result
+                    if batched_request is None:
+                        raise HTTPException(
+                            status_code=500, detail="Request not found in batched queue"
+                        )
 
-                elif queued_request.status == RequestStatus.FAILED:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Request failed: {queued_request.error}",
-                    )
+                    if batched_request.status == "completed":
+                        return batched_request.result
 
-                # Still processing, wait a bit
-                await asyncio.sleep(0.1)
+                    elif batched_request.status == "failed":
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Request failed: {batched_request.error}",
+                        )
 
-            # Timeout
-            raise HTTPException(status_code=408, detail="Request timeout")
+                    # Still processing, wait a bit
+                    await asyncio.sleep(0.1)
+
+                # Timeout
+                raise HTTPException(status_code=408, detail="Request timeout")
+
+            else:
+                # Add request to sequential queue (Part 6)
+                request_id = request_queue.add_request(request)
+
+                # Wait for request to complete
+                max_wait_time = 300  # 5 minutes timeout
+                start_time = time.time()
+
+                while time.time() - start_time < max_wait_time:
+                    queued_request = request_queue.get_request_status(request_id)
+
+                    if queued_request is None:
+                        raise HTTPException(
+                            status_code=500, detail="Request not found in queue"
+                        )
+
+                    if queued_request.status == RequestStatus.COMPLETED:
+                        return queued_request.result
+
+                    elif queued_request.status == RequestStatus.FAILED:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Request failed: {queued_request.error}",
+                        )
+
+                    # Still processing, wait a bit
+                    await asyncio.sleep(0.1)
+
+                # Timeout
+                raise HTTPException(status_code=408, detail="Request timeout")
 
     except HTTPException:
         raise
@@ -547,9 +715,18 @@ async def get_queue_status():
     Get detailed queue status and statistics.
 
     Returns:
-        Queue metrics and current status
+        Queue metrics and current status - batched or sequential based on mode
     """
-    return request_queue.stats
+    if USE_BATCHED_QUEUE:
+        stats = batched_request_queue.stats
+        stats["mode"] = "batched"
+        stats["part"] = 7
+        return stats
+    else:
+        stats = request_queue.stats
+        stats["mode"] = "sequential"
+        stats["part"] = 6
+        return stats
 
 
 @app.get("/queue/recent")
@@ -561,9 +738,12 @@ async def get_recent_completions(limit: int = 20):
         limit: Maximum number of recent completions to return (default: 20)
 
     Returns:
-        List of recent completion data including prompts and responses
+        List of recent completion data including prompts and responses from appropriate queue
     """
-    return request_queue.get_recent_completions(limit)
+    if USE_BATCHED_QUEUE:
+        return batched_request_queue.get_recent_completions(limit)
+    else:
+        return request_queue.get_recent_completions(limit)
 
 
 if __name__ == "__main__":
