@@ -5,6 +5,22 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Start SEQUENTIAL Server",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "cli.py",
+      "console": "integratedTerminal",
+        "args": ["serve", "--queue-mode", "sequential"]
+    },
+        {
+      "name": "Start BATCHED Server",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "cli.py",
+      "console": "integratedTerminal",
+        "args": ["serve", "--queue-mode", "batched"]
+    },
+    {
       "name": "Predict",
       "type": "debugpy",
       "request": "launch",

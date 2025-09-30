@@ -182,8 +182,10 @@ curl -X POST http://localhost:8000/completions \\
         )
     except KeyboardInterrupt:
         console.print("\n🛑 [bold red]Server stopped by user[/bold red]")
+        console.print_exception()
     except Exception as e:
         console.print(f"\n❌ [bold red]Server error: {e}[/bold red]")
+        console.print_exception()
 
 
 @app.command()

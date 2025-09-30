@@ -10,7 +10,7 @@ import asyncio
 from typing import Dict, Any, List, TYPE_CHECKING
 
 from .base import QueueStrategy
-from ruvonvllm.api.queue import request_queue
+from .queue import request_queue
 
 if TYPE_CHECKING:
     from ruvonvllm.api.server import CompletionRequest, CompletionResponse
@@ -69,7 +69,7 @@ class SequentialQueueStrategy(QueueStrategy):
                 raise Exception("Request not found in queue")
 
             # Import here to avoid circular imports
-            from ruvonvllm.api.queue import RequestStatus
+            from ruvonvllm.api.strategies.queue import RequestStatus
 
             if queued_request.status == RequestStatus.COMPLETED:
                 return queued_request.result

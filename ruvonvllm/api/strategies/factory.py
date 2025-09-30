@@ -60,7 +60,7 @@ class QueueStrategyFactory:
         if mode not in cls._strategies:
             valid_modes = ", ".join(cls._strategies.keys())
             raise ValueError(
-                f"Invalid queue mode: '{mode}'. " f"Valid modes are: {valid_modes}"
+                f"Invalid queue mode: '{mode}'. Valid modes are: {valid_modes}"
             )
 
         # Create strategy instance
