@@ -6,7 +6,7 @@ We start with the 124M parameter model for Day 1 of our tiny vLLM implementation
 """
 
 import torch
-from transformers import GPT2LMHeadModel, GPT2Config
+from transformers import DynamicCache, GPT2LMHeadModel, GPT2Config
 from typing import Dict, Any, Optional, List
 
 
@@ -50,7 +50,7 @@ class GPT2Model:
         # Load model
         self.model = GPT2LMHeadModel.from_pretrained(self.model_name)
         self.model.to(self.device)
-        self.model.eval()  # Set to evaluation mode
+        self.model.eval()  # Disable dropout/batch norm for deterministic inference
 
         # Calculate and display model size
         param_count = sum(p.numel() for p in self.model.parameters())
@@ -191,3 +191,191 @@ class GPT2Model:
             )
 
         return sequence
+
+    def generate_greedy_with_cache(
+        self, input_ids: torch.Tensor, max_length: int = 20, show_progress: bool = False
+    ) -> List[int]:
+        """
+        Generate text using greedy decoding with KV-cache optimization.
+
+        KV-caching is a crucial optimization for autoregressive generation:
+        - Problem: Each generation step recomputes attention for ALL previous tokens
+        - Solution: Cache the Key/Value states since they never change for past tokens
+        - Result: 10-20x speedup for longer sequences
+
+        How it works:
+        1. First forward pass: Compute K/V for all input tokens, cache them
+        2. Subsequent passes: Only compute K/V for the new token, append to cache
+        3. Attention: Use cached K/V for past tokens + new K/V for current token
+
+        This transforms O(n²) complexity to O(n) for generation.
+
+        Args:
+            input_ids: Starting tokens with shape (1, sequence_length)
+            max_length: Maximum number of NEW tokens to generate
+            show_progress: Whether to print each generated token
+
+        Returns:
+            List of ALL token IDs (input + generated tokens)
+        """
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        # Convert tensor (1, seq_len) -> list for easier token appending
+        # squeeze() removes batch dimension: (1, seq_len) -> (seq_len), then tolist() -> Python list
+        sequence: List = input_ids.squeeze().tolist()
+        original_length = len(sequence)
+
+        if show_progress:
+            print(f"Starting cached generation with {original_length} input tokens...")
+
+        # Initialize past_key_values cache (will be populated on first forward pass)
+        past_key_values: DynamicCache | None = None
+
+        # Generate tokens one by one using KV-cache
+        for step in range(max_length):
+            if past_key_values is None:
+                # First forward pass: process entire input sequence
+                current_ids = torch.tensor(sequence).unsqueeze(0).to(self.device)
+                if show_progress:
+                    print(
+                        f"Step {step + 1}: Processing full sequence ({len(sequence)} tokens)"
+                    )
+            else:
+                # Subsequent passes: only process the new token
+                current_ids = torch.tensor([sequence[-1]]).unsqueeze(0).to(self.device)
+                if show_progress:
+                    print(
+                        f"Step {step + 1}: Processing only new token (cached: {len(sequence)-1} tokens)"
+                    )
+
+            # Forward pass with KV-cache
+            # past_key_values contains cached attention states from previous steps
+            with torch.no_grad():
+                outputs = self.model(
+                    current_ids,
+                    past_key_values=past_key_values,
+                    use_cache=True,  # Enable caching
+                )
+                logits = outputs.logits
+                past_key_values = outputs.past_key_values  # Update cache
+
+            # Get logits for the last position (what comes next)
+            next_token_logits = logits[0, -1, :]
+
+            # Greedy selection: pick token with highest logit
+            next_token_id = torch.argmax(next_token_logits).item()
+
+            # Add to sequence
+            sequence.append(next_token_id)
+
+            if show_progress:
+                # Decode the new token to show what was generated
+                from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+
+                tokenizer = GPT2TokenizerWrapper(self.model_name)
+                token_text = tokenizer.decode([next_token_id])
+                cache_info = (
+                    f"(cache size: {len(past_key_values[0][0][0])} tokens)"
+                    if past_key_values
+                    else "(no cache)"
+                )
+                print(f"Generated token {next_token_id} -> '{token_text}' {cache_info}")
+
+            # Check for end-of-sequence token (optional early stopping)
+            if (
+                hasattr(self.model.config, "eos_token_id")
+                and next_token_id == self.model.config.eos_token_id
+            ):
+                if show_progress:
+                    print("Generated end-of-sequence token, stopping early.")
+                break
+
+        if show_progress:
+            print(
+                f"Cached generation complete! Generated {len(sequence) - original_length} new tokens."
+            )
+
+        return sequence
+
+    def benchmark_generation(
+        self, input_ids: torch.Tensor, max_length: int = 20, num_runs: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Benchmark generation performance with and without KV-cache.
+
+        This method runs both generation approaches multiple times and measures:
+        - Total generation time
+        - Time per token
+        - Speedup factor
+        - Memory efficiency
+
+        Args:
+            input_ids: Starting tokens for generation
+            max_length: Number of tokens to generate
+            num_runs: Number of benchmark runs for averaging
+
+        Returns:
+            Dictionary containing performance metrics
+        """
+        import time
+
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        print(f"🏁 Benchmarking generation: {max_length} tokens, {num_runs} runs each")
+        print("=" * 60)
+
+        # Benchmark without cache (naive approach)
+        print("🐌 Testing WITHOUT KV-cache (naive)...")
+        no_cache_times = []
+        for run in range(num_runs):
+            start_time = time.time()
+            _ = self.generate_greedy(input_ids, max_length, show_progress=False)
+            end_time = time.time()
+            run_time = end_time - start_time
+            no_cache_times.append(run_time)
+            print(f"  Run {run + 1}: {run_time:.3f}s")
+
+        # Benchmark with cache (optimized approach)
+        print("\n🚀 Testing WITH KV-cache (optimized)...")
+        with_cache_times = []
+        for run in range(num_runs):
+            start_time = time.time()
+            _ = self.generate_greedy_with_cache(
+                input_ids, max_length, show_progress=False
+            )
+            end_time = time.time()
+            run_time = end_time - start_time
+            with_cache_times.append(run_time)
+            print(f"  Run {run + 1}: {run_time:.3f}s")
+
+        # Calculate statistics
+        avg_no_cache = sum(no_cache_times) / len(no_cache_times)
+        avg_with_cache = sum(with_cache_times) / len(with_cache_times)
+        speedup = avg_no_cache / avg_with_cache
+        time_per_token_no_cache = avg_no_cache / max_length
+        time_per_token_with_cache = avg_with_cache / max_length
+
+        results = {
+            "no_cache_avg_time": avg_no_cache,
+            "with_cache_avg_time": avg_with_cache,
+            "speedup_factor": speedup,
+            "time_per_token_no_cache": time_per_token_no_cache,
+            "time_per_token_with_cache": time_per_token_with_cache,
+            "num_tokens": max_length,
+            "num_runs": num_runs,
+        }
+
+        print("\n📊 BENCHMARK RESULTS:")
+        print("=" * 60)
+        print(
+            f"Without KV-cache: {avg_no_cache:.3f}s ({time_per_token_no_cache:.3f}s/token)"
+        )
+        print(
+            f"With KV-cache:    {avg_with_cache:.3f}s ({time_per_token_with_cache:.3f}s/token)"
+        )
+        print(f"Speedup:          {speedup:.1f}x faster! 🚀")
+        print("=" * 60)
+
+        return results

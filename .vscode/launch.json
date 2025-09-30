@@ -5,12 +5,28 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python Debugger: Current File",
+      "name": "Predict",
       "type": "debugpy",
       "request": "launch",
       "program": "cli.py",
       "console": "integratedTerminal",
-        "args": ["predict", "--text", "The future of AI is"]
+        "args": ["predict", "--text", "The future of AI is", "--top-k", "25"]
+    },
+    {
+      "name": "Generate",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "cli.py",
+      "console": "integratedTerminal",
+        "args": ["generate", "--text", "The future of AI is"]
+    },
+    {
+      "name": "Benckmark",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "cli.py",
+      "console": "integratedTerminal",
+        "args": ["benchmark", "--text", "The future of AI is"]
     }
   ]
 }
