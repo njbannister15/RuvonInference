@@ -229,10 +229,10 @@ def sequential_queue_processor():
             except Exception as e:
                 # Mark as failed
                 sequential_queue.fail_request(queued_request.id, str(e))
-                logger.error(f"Request {queued_request.id} failed: {e}")
+                logger.exception(f"Request {queued_request.id} failed: {e}")
 
         except Exception as e:
-            logger.error(f"Queue processor error: {e}")
+            logger.exception(f"Queue processor error: {e}")
             time.sleep(1)  # Brief pause on error
 
 
@@ -279,7 +279,9 @@ def process_batch_sync(batch_requests: list) -> list:
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.error(f"Batch generation failed for {len(batch_requests)} requests: {e}")
+        logger.exception(
+            f"Batch generation failed for {len(batch_requests)} requests: {e}"
+        )
         logger.error(
             f"Batch parameters: max_tokens={batch_requests[0].max_tokens}, batch_size={len(batch_requests)}"
         )
@@ -362,10 +364,10 @@ def batched_queue_processor():
             except Exception as e:
                 # Mark batch as failed
                 batched_request_queue.fail_batch(batch.id, str(e))
-                logger.error(f"Batch {batch.id} failed: {e}")
+                logger.exception(f"Batch {batch.id} failed: {e}")
 
         except Exception as e:
-            logger.error(f"Batched queue processor error: {e}")
+            logger.exception(f"Batched queue processor error: {e}")
             time.sleep(1)  # Brief pause on error
 
 
@@ -379,7 +381,11 @@ queue_strategy = QueueStrategyFactory.create_strategy(QUEUE_MODE)
 
 # # Start the appropriate queue processor
 if QUEUE_MODE == "continuous":
-    # Start continuous batching processor
+    # TODO: Replace thread with async task for better fault tolerance
+    # Current thread-based approach has limitations:
+    # - Thread death = service death
+    # - No automatic restart on failure
+    # - GPU context sharing issues
     continuous_processor_thread = threading.Thread(
         target=lambda: asyncio.run(continuous_scheduler.continuous_generation_loop()),
         daemon=True,
@@ -387,6 +393,11 @@ if QUEUE_MODE == "continuous":
     continuous_processor_thread.start()
     print("⚡ Started continuous batching processor (TRUE CONTINUOUS BATCHING)")
 elif QUEUE_MODE == "batched":
+    # TODO: Replace thread with async task for better fault tolerance
+    # Current thread-based approach has limitations:
+    # - Thread death = service death
+    # - No automatic restart on failure
+    # - GPU context sharing issues
     batched_queue_thread = threading.Thread(target=batched_queue_processor, daemon=True)
     batched_queue_thread.start()
     print("🚀 Started batched queue processor (PREFILL BATCHING)")

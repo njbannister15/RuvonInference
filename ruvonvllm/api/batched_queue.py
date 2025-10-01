@@ -280,7 +280,9 @@ class BatchedRequestQueue:
         """
         with self._lock:
             if batch_id not in self._processing_batches:
-                logger.error(f"Batch {batch_id} not found in processing batches")
+                logger.error(
+                    f"Batch {batch_id} not found in processing batches {self._processing_batches}"
+                )
                 return
 
             batch = self._processing_batches[batch_id]
@@ -511,7 +513,7 @@ class BatchedRequestQueue:
 
 # Global batched request queue instance
 batched_request_queue = BatchedRequestQueue(
-    max_batch_size=64,  # Process up to 4 requests together
+    max_batch_size=16,  # Process up to 16 requests together
     max_wait_time=0.1,  # Wait max 100ms to form larger batches
     min_batch_size=1,  # Process single requests immediately if queue is empty
 )

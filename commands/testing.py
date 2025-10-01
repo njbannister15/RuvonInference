@@ -32,8 +32,11 @@ def stress_test(
     max_requests: int = typer.Option(
         100, "--max-requests", "-n", help="Total number of requests to send"
     ),
-    batch_size: int = typer.Option(
-        10, "--batch-size", "-b", help="Starting batch size (10, 20, 30, etc.)"
+    burst_size: int = typer.Option(
+        10,
+        "--burst-size",
+        "-b",
+        help="Starting burst size - number of rapid requests per wave (10, 20, 30, etc.)",
     ),
     host: str = typer.Option("127.0.0.1", "--host", "-h", help="API server host"),
     port: int = typer.Option(8000, "--port", "-p", help="API server port"),
@@ -48,9 +51,9 @@ def stress_test(
     ),
 ):
     """
-    🚀 Run stress test with increasing batch sizes
+    🚀 Run stress test with increasing burst sizes
 
-    This sends requests in increasing batches (10, 20, 30, 40...) to test
+    This sends requests in increasing bursts (10, 20, 30, 40...) to test
     the queue system's ability to handle multiple concurrent requests.
     """
     # Show header
@@ -60,7 +63,7 @@ def stress_test(
     # Show test configuration
     config_items = {
         "📊 Total requests": str(max_requests),
-        "📦 Batch size": f"{batch_size} (increments by {batch_size})",
+        "📦 Burst size": f"{burst_size} (increments by {burst_size})",
         "🌐 Server": f"http://{host}:{port}",
         "📝 Prompt": f"'{prompt}'",
         "🎭 Tokens per request": str(max_tokens),
@@ -74,17 +77,17 @@ def stress_test(
 
     try:
         # Send a batch of requests
-        async def send_batch(session, batch_size, batch_num):
-            """Send a batch of requests concurrently and measure timing."""
+        async def send_burst(session, burst_size, burst_num):
+            """Send a burst of requests concurrently and measure timing."""
             request_data = {
-                "prompt": f"{prompt} (batch {batch_num})",
+                "prompt": f"{prompt} (burst {burst_num})",
                 "max_tokens": max_tokens,
             }
 
             start_time = time.time()
             tasks = []
 
-            for i in range(batch_size):
+            for i in range(burst_size):
                 task = session.post(
                     f"http://{host}:{port}/completions",
                     json=request_data,
@@ -110,22 +113,22 @@ def stress_test(
                         response.close()
 
                 return {
-                    "batch_size": batch_size,
-                    "batch_num": batch_num,
+                    "burst_size": burst_size,
+                    "burst_num": burst_num,
                     "successful": successful,
                     "failed": failed,
                     "total_time": end_time - start_time,
-                    "requests_per_second": batch_size / (end_time - start_time)
+                    "requests_per_second": burst_size / (end_time - start_time)
                     if end_time > start_time
                     else 0,
                 }
 
             except Exception as e:
                 return {
-                    "batch_size": batch_size,
-                    "batch_num": batch_num,
+                    "burst_size": burst_size,
+                    "burst_num": burst_num,
                     "successful": 0,
-                    "failed": batch_size,
+                    "failed": burst_size,
                     "total_time": time.time() - start_time,
                     "requests_per_second": 0,
                     "error": str(e),
@@ -160,8 +163,8 @@ def stress_test(
                 total_failed = 0
                 results = []
 
-                current_batch_size = batch_size
-                batch_num = 1
+                current_burst_size = burst_size
+                burst_num = 1
 
                 console.print("🚀 [bold blue]Starting stress test...[/bold blue]")
                 console.print()
@@ -172,7 +175,7 @@ def stress_test(
                     show_header=True,
                     header_style="bold magenta",
                 )
-                results_table.add_column("Batch #", style="cyan", no_wrap=True)
+                results_table.add_column("Burst #", style="cyan", no_wrap=True)
                 results_table.add_column("Size", style="yellow")
                 results_table.add_column("Success", style="green")
                 results_table.add_column("Failed", style="red")
@@ -181,23 +184,23 @@ def stress_test(
 
                 with Live(results_table, refresh_per_second=1) as live:
                     while total_sent < max_requests:
-                        # Adjust batch size to not exceed max_requests
+                        # Adjust burst size to not exceed max_requests
                         remaining = max_requests - total_sent
-                        actual_batch_size = min(current_batch_size, remaining)
+                        actual_burst_size = min(current_burst_size, remaining)
 
-                        # Send batch
-                        result = await send_batch(session, actual_batch_size, batch_num)
+                        # Send burst
+                        result = await send_burst(session, actual_burst_size, burst_num)
                         results.append(result)
 
                         # Update stats
-                        total_sent += actual_batch_size
+                        total_sent += actual_burst_size
                         total_successful += result["successful"]
                         total_failed += result["failed"]
 
                         # Add to table
                         results_table.add_row(
-                            str(batch_num),
-                            str(actual_batch_size),
+                            str(burst_num),
+                            str(actual_burst_size),
                             str(result["successful"]),
                             str(result["failed"]),
                             f"{result['total_time']:.2f}",
@@ -207,11 +210,11 @@ def stress_test(
                         # Update live display
                         live.update(results_table)
 
-                        # Move to next batch
-                        current_batch_size += batch_size
-                        batch_num += 1
+                        # Move to next burst
+                        current_burst_size += burst_size
+                        burst_num += 1
 
-                        # Small delay between batches
+                        # Small delay between bursts
                         await asyncio.sleep(1)
 
                 console.print()
@@ -251,7 +254,7 @@ def stress_test(
                     if total_sent > 0
                     else "0%",
                 )
-                summary_table.add_row("Total Batches", str(len(results)))
+                summary_table.add_row("Total Bursts", str(len(results)))
                 summary_table.add_row(
                     "Avg Requests/Second", f"{avg_requests_per_second:.1f}"
                 )

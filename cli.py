@@ -80,13 +80,6 @@ def serve(
         "-q",
         help="Queue processing mode: sequential (Part 6), batched (Part 7), continuous (Part 8)",
     ),
-    # Keep the old parameter for backwards compatibility
-    use_batched_queue: bool = typer.Option(
-        None,
-        "--use-batched-queue/--no-batched-queue",
-        help="[DEPRECATED] Use --queue-mode instead",
-        hidden=True,
-    ),
 ):
     """
     🌐 Start the HTTP API server
@@ -97,13 +90,6 @@ def serve(
     # Show header
     console.print(create_header())
     console.print()
-
-    # Handle backwards compatibility
-    if use_batched_queue is not None:
-        queue_mode = "batched" if use_batched_queue else "sequential"
-        console.print(
-            "[yellow]⚠️  WARNING: --use-batched-queue is deprecated, use --queue-mode instead[/yellow]"
-        )
 
     # Validate queue mode
     valid_modes = ["sequential", "batched", "continuous"]
@@ -130,7 +116,8 @@ def serve(
         f"📖 API Docs: [bold cyan]http://{host}:{port}/docs[/bold cyan]\n"
         f"🩺 Health Check: [bold cyan]http://{host}:{port}/health[/bold cyan]\n"
         f"🚀 ASGI Server: [bold yellow]uvicorn[/bold yellow] (uvloop, httptools, keep-alive)\n"
-        f"📊 Config: [bold yellow]1 worker[/bold yellow] | [bold green]CORS enabled[/bold green] | [bold red]GZip disabled[/bold red]",
+        f"📊 Config: [bold yellow]1 worker[/bold yellow] | [bold green]CORS enabled[/bold green] | [bold red]GZip disabled[/bold red]\n"
+        f"📝 Logs: [bold cyan]logs/ruvonvllm_*.log[/bold cyan]",
         title="🚀 RuvonVLLM API Server Configuration",
         style="green",
         border_style="green",
@@ -170,8 +157,32 @@ curl -X POST http://localhost:8000/completions \\
 
     os.environ["QUEUE_MODE"] = queue_mode
 
+    # Setup logging
+    import logging
+    from datetime import datetime
+
+    # Create logs directory
+    log_dir = "logs"
+    import os
+
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Setup file logging
+    log_filename = f"{log_dir}/ruvonvllm_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.WARN,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler(log_filename),
+            logging.StreamHandler(),  # Still show in terminal
+        ],
+    )
+
     # Start the server
     console.print("🚀 [bold green]Starting server...[/bold green]")
+    console.print(f"📝 [bold cyan]Logs: {log_filename}[/bold cyan]")
     console.print()
 
     try:

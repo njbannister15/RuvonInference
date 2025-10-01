@@ -5,11 +5,14 @@ This module provides functionality to load and use GPT-2 models from HuggingFace
 We start with the 124M parameter model for Day 1 of our tiny vLLM implementation.
 """
 
+import logging
 import torch
 from transformers import DynamicCache, GPT2LMHeadModel, GPT2Config
 from typing import Dict, Any, Optional, List
 
 from ruvonvllm.sampling.strategies import sample_token, get_sampling_info
+
+logger = logging.getLogger(__name__)
 
 
 class GPT2Model:
@@ -41,11 +44,11 @@ class GPT2Model:
         This downloads the pretrained weights and sets up the model for inference.
         The model is set to evaluation mode to disable dropout and other training-specific layers.
         """
-        print(f"Loading GPT-2 model: {self.model_name}")
+        logger.info(f"Loading GPT-2 model: {self.model_name}")
 
         # Load configuration
         self.config = GPT2Config.from_pretrained(self.model_name)
-        print(
+        logger.info(
             f"Model config: {self.config.n_layer} layers, {self.config.n_head} heads, {self.config.n_embd} embedding dim"
         )
 
@@ -56,7 +59,7 @@ class GPT2Model:
 
         # Calculate and display model size
         param_count = sum(p.numel() for p in self.model.parameters())
-        print(f"Model loaded with {param_count:,} parameters")
+        logger.info(f"Model loaded with {param_count:,} parameters")
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -147,7 +150,7 @@ class GPT2Model:
         original_length = len(sequence)
 
         if show_progress:
-            print(f"Starting generation with {original_length} input tokens...")
+            logger.info(f"Starting generation with {original_length} input tokens...")
 
         # Generate tokens one by one
         for step in range(max_length):
@@ -174,7 +177,7 @@ class GPT2Model:
 
                 tokenizer = GPT2TokenizerWrapper(self.model_name)
                 token_text = tokenizer.decode([next_token_id])
-                print(
+                logger.info(
                     f"Step {step + 1}: Generated token {next_token_id} -> '{token_text}'"
                 )
 
@@ -184,11 +187,11 @@ class GPT2Model:
                 and next_token_id == self.model.config.eos_token_id
             ):
                 if show_progress:
-                    print("Generated end-of-sequence token, stopping early.")
+                    logger.info("Generated end-of-sequence token, stopping early.")
                 break
 
         if show_progress:
-            print(
+            logger.info(
                 f"Generation complete! Generated {len(sequence) - original_length} new tokens."
             )
 
@@ -229,7 +232,9 @@ class GPT2Model:
         original_length = len(sequence)
 
         if show_progress:
-            print(f"Starting cached generation with {original_length} input tokens...")
+            logger.info(
+                f"Starting cached generation with {original_length} input tokens..."
+            )
 
         # Initialize past_key_values cache (will be populated on first forward pass)
         past_key_values: DynamicCache | None = None
@@ -240,14 +245,14 @@ class GPT2Model:
                 # First forward pass: process entire input sequence
                 current_ids = torch.tensor(sequence).unsqueeze(0).to(self.device)
                 if show_progress:
-                    print(
+                    logger.info(
                         f"Step {step + 1}: Processing full sequence ({len(sequence)} tokens)"
                     )
             else:
                 # Subsequent passes: only process the new token
                 current_ids = torch.tensor([sequence[-1]]).unsqueeze(0).to(self.device)
                 if show_progress:
-                    print(
+                    logger.info(
                         f"Step {step + 1}: Processing only new token (cached: {len(sequence) - 1} tokens)"
                     )
 
@@ -282,7 +287,9 @@ class GPT2Model:
                     if past_key_values
                     else "(no cache)"
                 )
-                print(f"Generated token {next_token_id} -> '{token_text}' {cache_info}")
+                logger.info(
+                    f"Generated token {next_token_id} -> '{token_text}' {cache_info}"
+                )
 
             # Check for end-of-sequence token (optional early stopping)
             if (
@@ -290,11 +297,11 @@ class GPT2Model:
                 and next_token_id == self.model.config.eos_token_id
             ):
                 if show_progress:
-                    print("Generated end-of-sequence token, stopping early.")
+                    logger.info("Generated end-of-sequence token, stopping early.")
                 break
 
         if show_progress:
-            print(
+            logger.info(
                 f"Cached generation complete! Generated {len(sequence) - original_length} new tokens."
             )
 
@@ -325,11 +332,13 @@ class GPT2Model:
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        print(f"🏁 Benchmarking generation: {max_length} tokens, {num_runs} runs each")
-        print("=" * 60)
+        logger.info(
+            f"🏁 Benchmarking generation: {max_length} tokens, {num_runs} runs each"
+        )
+        logger.info("=" * 60)
 
         # Benchmark without cache (naive approach)
-        print("🐌 Testing WITHOUT KV-cache (naive)...")
+        logger.info("🐌 Testing WITHOUT KV-cache (naive)...")
         no_cache_times = []
         for run in range(num_runs):
             start_time = time.time()
@@ -337,10 +346,10 @@ class GPT2Model:
             end_time = time.time()
             run_time = end_time - start_time
             no_cache_times.append(run_time)
-            print(f"  Run {run + 1}: {run_time:.3f}s")
+            logger.info(f"  Run {run + 1}: {run_time:.3f}s")
 
         # Benchmark with cache (optimized approach)
-        print("\n🚀 Testing WITH KV-cache (optimized)...")
+        logger.info("\n🚀 Testing WITH KV-cache (optimized)...")
         with_cache_times = []
         for run in range(num_runs):
             start_time = time.time()
@@ -350,7 +359,7 @@ class GPT2Model:
             end_time = time.time()
             run_time = end_time - start_time
             with_cache_times.append(run_time)
-            print(f"  Run {run + 1}: {run_time:.3f}s")
+            logger.info(f"  Run {run + 1}: {run_time:.3f}s")
 
         # Calculate statistics
         avg_no_cache = sum(no_cache_times) / len(no_cache_times)
@@ -369,16 +378,16 @@ class GPT2Model:
             "num_runs": num_runs,
         }
 
-        print("\n📊 BENCHMARK RESULTS:")
-        print("=" * 60)
-        print(
+        logger.info("\n📊 BENCHMARK RESULTS:")
+        logger.info("=" * 60)
+        logger.info(
             f"Without KV-cache: {avg_no_cache:.3f}s ({time_per_token_no_cache:.3f}s/token)"
         )
-        print(
+        logger.info(
             f"With KV-cache:    {avg_with_cache:.3f}s ({time_per_token_with_cache:.3f}s/token)"
         )
-        print(f"Speedup:          {speedup:.1f}x faster! 🚀")
-        print("=" * 60)
+        logger.info(f"Speedup:          {speedup:.1f}x faster! 🚀")
+        logger.info("=" * 60)
 
         return results
 
@@ -434,10 +443,10 @@ class GPT2Model:
         original_length = len(sequence)
 
         if show_progress:
-            print(
+            logger.info(
                 f"Starting sampling generation with {original_length} input tokens..."
             )
-            print(f"Parameters: temp={temperature}, top_k={top_k}, top_p={top_p}")
+            logger.info(f"Parameters: temp={temperature}, top_k={top_k}, top_p={top_p}")
 
         # Initialize KV cache if using cached generation
         past_key_values = None if use_cache else None
@@ -491,11 +500,13 @@ class GPT2Model:
                 tokenizer = GPT2TokenizerWrapper(self.model_name)
                 token_text = tokenizer.decode([next_token_id])
 
-                print(f"Step {step + 1}:")
-                print(f"  Generated token: {next_token_id} -> '{token_text}'")
-                print(f"  Top token prob: {sampling_info['top_token_prob']:.3f}")
-                print(f"  Effective vocab: {sampling_info['effective_vocab_size']}")
-                print(f"  Entropy change: {sampling_info['entropy_change']:.3f}")
+                logger.info(f"Step {step + 1}:")
+                logger.info(f"  Generated token: {next_token_id} -> '{token_text}'")
+                logger.info(f"  Top token prob: {sampling_info['top_token_prob']:.3f}")
+                logger.info(
+                    f"  Effective vocab: {sampling_info['effective_vocab_size']}"
+                )
+                logger.info(f"  Entropy change: {sampling_info['entropy_change']:.3f}")
 
             # Check for end-of-sequence token
             if (
@@ -503,11 +514,11 @@ class GPT2Model:
                 and next_token_id == self.model.config.eos_token_id
             ):
                 if show_progress:
-                    print("Generated end-of-sequence token, stopping early.")
+                    logger.info("Generated end-of-sequence token, stopping early.")
                 break
 
         if show_progress:
-            print(
+            logger.info(
                 f"Sampling generation complete! Generated {len(sequence) - original_length} new tokens."
             )
 
@@ -555,11 +566,11 @@ class GPT2Model:
 
         results = {}
 
-        print(f"🎭 Comparing sampling strategies on: '{prompt_text}'")
-        print("=" * 60)
+        logger.info(f"🎭 Comparing sampling strategies on: '{prompt_text}'")
+        logger.info("=" * 60)
 
         for strategy_name, params in strategies.items():
-            print(f"\n🎯 {strategy_name.upper()}: {params}")
+            logger.info(f"\n🎯 {strategy_name.upper()}: {params}")
             strategy_outputs = []
 
             for i in range(num_samples):
@@ -570,7 +581,7 @@ class GPT2Model:
                 generated_part = full_text[len(prompt_text) :]
                 strategy_outputs.append(generated_part)
 
-                print(f"  {i + 1}: '{generated_part}'")
+                logger.info(f"  {i + 1}: '{generated_part}'")
 
             results[strategy_name] = strategy_outputs
 
@@ -625,7 +636,7 @@ class GPT2Model:
         # Calculate batch size for tracking and progress reporting
         batch_size = len(batch_input_ids)
         if show_progress:
-            print(f"🚀 Starting batched generation for {batch_size} requests")
+            logger.info(f"🚀 Starting batched generation for {batch_size} requests")
 
         # === DATA PREPARATION ===
         # Convert tensor inputs to Python lists for easier manipulation during generation
@@ -668,7 +679,7 @@ class GPT2Model:
             # === PROGRESS REPORTING ===
             # Print progress every 5 steps to track generation without overwhelming output
             if show_progress and step % 5 == 0:
-                print(
+                logger.info(
                     f"  Step {step}/{max_length}, {len(active_sequences)} active sequences"
                 )
 
@@ -703,12 +714,14 @@ class GPT2Model:
                 # === DEBUG LOGGING ===
                 # Print detailed tensor shapes every 10 steps for debugging
                 if show_progress and step % 10 == 0:
-                    print(
+                    logger.info(
                         f"    Step {step}: Processing {len(active_sequences)} sequences"
                     )
-                    print(f"    batch_tensor shape: {batch_tensor.shape}")
+                    logger.info(f"    batch_tensor shape: {batch_tensor.shape}")
                     if past_key_values is not None:
-                        print(f"    KV-cache shape: {past_key_values[0][0].shape}")
+                        logger.info(
+                            f"    KV-cache shape: {past_key_values[0][0].shape}"
+                        )
 
                 # === STEP 0: PREFILL PHASE ===
                 # First step is special - we process the FULL input sequences to populate KV-cache
@@ -827,21 +840,21 @@ class GPT2Model:
                             past_key_values = tuple(sliced_past_key_values)
 
                             if show_progress:
-                                print(
+                                logger.info(
                                     f"    Sliced KV-cache from {batch_size} to {len(active_sequences)} sequences"
                                 )
 
                         except Exception as e:
                             # === ERROR HANDLING ===
                             # If KV-cache slicing fails, provide detailed debugging information
-                            print(f"❌ KV-cache slicing error at step {step}:")
-                            print(f"   active_sequences: {active_sequences}")
-                            print(f"   batch_size: {batch_size}")
+                            logger.error(f"❌ KV-cache slicing error at step {step}:")
+                            logger.error(f"   active_sequences: {active_sequences}")
+                            logger.error(f"   batch_size: {batch_size}")
                             if past_key_values:
-                                print(
+                                logger.error(
                                     f"   KV-cache shape: {past_key_values[0][0].shape}"
                                 )
-                            print(f"   Error: {e}")
+                            logger.error(f"   Error: {e}")
                             raise e
 
                     # === INCREMENTAL FORWARD PASS ===
@@ -906,7 +919,7 @@ class GPT2Model:
                         seq_idx
                     )  # Mark this sequence as finished
                     if show_progress:
-                        print(f"    Sequence {seq_idx} finished (EOS token)")
+                        logger.info(f"    Sequence {seq_idx} finished (EOS token)")
 
             # === DYNAMIC BATCH MANAGEMENT ===
             # Remove sequences that finished this step from the active list
@@ -925,7 +938,7 @@ class GPT2Model:
                 len(seq) - orig_len  # Current length minus original prompt length
                 for seq, orig_len in zip(batch_sequences, original_lengths)
             )
-            print(
+            logger.info(
                 f"🎉 Batched generation complete! Generated {total_generated} total tokens"
             )
 
@@ -962,7 +975,9 @@ class GPT2Model:
 
         batch_size = len(active_requests)
         if show_progress:
-            print(f"🔄 Continuous generation step for {batch_size} active requests")
+            logger.info(
+                f"🔄 Continuous generation step for {batch_size} active requests"
+            )
 
         # Prepare input for current step
         if past_key_values is None:
@@ -993,7 +1008,7 @@ class GPT2Model:
             )
 
             if show_progress:
-                print(f"  Prefill step: input shape {input_tensor.shape}")
+                logger.info(f"  Prefill step: input shape {input_tensor.shape}")
 
         else:
             # Subsequent steps: just process last generated token for each request
@@ -1011,7 +1026,7 @@ class GPT2Model:
             attention_tensor = None  # Not needed for subsequent steps with cache
 
             if show_progress:
-                print(f"  Generation step: input shape {input_tensor.shape}")
+                logger.info(f"  Generation step: input shape {input_tensor.shape}")
 
         # Forward pass through model
         with torch.no_grad():
@@ -1065,7 +1080,7 @@ class GPT2Model:
             finished_flags.append(is_finished)
 
             if show_progress and is_finished:
-                print(
+                logger.info(
                     f"    Request {req.id} finished after {len(req.generated_tokens)} tokens"
                 )
 
