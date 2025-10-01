@@ -12,6 +12,7 @@ import threading
 from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from ruvonvllm.model.gpt2 import GPT2Model
@@ -399,9 +400,24 @@ else:
 # Create FastAPI app
 app = FastAPI(
     title="RuvonVLLM API",
-    description="Tiny vLLM Inference Engine - Day 4: HTTP Server with Streaming",
+    description="Tiny vLLM Inference Engine - Production-ready inference server",
     version="0.1.0",
 )
+
+# === PRODUCTION MIDDLEWARE CONFIGURATION ===
+
+# CORS configuration for cross-origin requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure for your domain in production
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# Note: Deliberately NOT adding GZipMiddleware for streaming responses
+# GZip compression interferes with real-time streaming token delivery
+# For static content, configure reverse proxy (nginx) compression instead
 
 
 @app.get("/")

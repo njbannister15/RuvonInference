@@ -128,8 +128,10 @@ def serve(
         f"🔄 Auto-reload: [bold cyan]{'Enabled' if reload else 'Disabled'}[/bold cyan]\n"
         f"📦 Queue Mode: [bold {queue_style}]{queue_display}[/bold {queue_style}]\n"
         f"📖 API Docs: [bold cyan]http://{host}:{port}/docs[/bold cyan]\n"
-        f"🩺 Health Check: [bold cyan]http://{host}:{port}/health[/bold cyan]",
-        title="🚀 RuvonVLLM API Server",
+        f"🩺 Health Check: [bold cyan]http://{host}:{port}/health[/bold cyan]\n"
+        f"🚀 ASGI Server: [bold yellow]uvicorn[/bold yellow] (uvloop, httptools, keep-alive)\n"
+        f"📊 Config: [bold yellow]1 worker[/bold yellow] | [bold green]CORS enabled[/bold green] | [bold red]GZip disabled[/bold red]",
+        title="🚀 RuvonVLLM API Server Configuration",
         style="green",
         border_style="green",
     )
@@ -179,6 +181,18 @@ curl -X POST http://localhost:8000/completions \\
             port=port,
             reload=reload,
             log_level="info",
+            # Production optimizations
+            loop="uvloop",  # Use uvloop for better async performance
+            http="httptools",  # Use httptools for faster HTTP parsing
+            ws="websockets",  # WebSocket support
+            lifespan="on",  # Enable lifespan events
+            access_log=False,  # Disable access logs for performance
+            # Connection settings
+            timeout_keep_alive=65,  # Server-side keep-alive timeout
+            # Worker settings (single worker for GPU affinity)
+            workers=1,  # One GPU = one process
+            # Disable compression for streaming (gzip off for streams)
+            # Note: FastAPI handles compression, disable at middleware level
         )
     except KeyboardInterrupt:
         console.print("\n🛑 [bold red]Server stopped by user[/bold red]")
