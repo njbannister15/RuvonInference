@@ -263,15 +263,28 @@ def process_batch_sync(batch_requests: list) -> list:
         batch_input_ids.append(input_ids)
 
     # Generate text using batched inference
-    batch_generated_tokens = model.generate_batch_with_sampling(
-        batch_input_ids,
-        max_length=batch_requests[0].max_tokens,  # Use first request's settings
-        temperature=batch_requests[0].temperature,
-        top_k=batch_requests[0].top_k,
-        top_p=batch_requests[0].top_p,
-        use_cache=batch_requests[0].use_cache,
-        show_progress=False,
-    )
+    try:
+        batch_generated_tokens = model.generate_batch_with_sampling(
+            batch_input_ids,
+            max_length=batch_requests[0].max_tokens,  # Use first request's settings
+            temperature=batch_requests[0].temperature,
+            top_k=batch_requests[0].top_k,
+            top_p=batch_requests[0].top_p,
+            use_cache=batch_requests[0].use_cache,
+            show_progress=True,
+        )
+    except Exception as e:
+        # Log detailed error information for debugging
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Batch generation failed for {len(batch_requests)} requests: {e}")
+        logger.error(
+            f"Batch parameters: max_tokens={batch_requests[0].max_tokens}, batch_size={len(batch_requests)}"
+        )
+
+        # Re-raise the original error
+        raise e
 
     # Create responses for each request
     responses = []

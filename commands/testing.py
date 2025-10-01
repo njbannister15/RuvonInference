@@ -88,7 +88,7 @@ def stress_test(
                 task = session.post(
                     f"http://{host}:{port}/completions",
                     json=request_data,
-                    timeout=60,  # 60 second timeout per request
+                    timeout=300,  # 5 minute timeout per request
                 )
                 tasks.append(task)
 

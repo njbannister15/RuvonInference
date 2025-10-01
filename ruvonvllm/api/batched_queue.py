@@ -108,7 +108,7 @@ class BatchedRequestQueue:
 
     def __init__(
         self,
-        max_batch_size: int = 4,
+        max_batch_size: int = 32,
         max_wait_time: float = 0.1,  # 100ms max wait to form batch
         min_batch_size: int = 1,
     ):
@@ -511,7 +511,7 @@ class BatchedRequestQueue:
 
 # Global batched request queue instance
 batched_request_queue = BatchedRequestQueue(
-    max_batch_size=4,  # Process up to 4 requests together
+    max_batch_size=64,  # Process up to 4 requests together
     max_wait_time=0.1,  # Wait max 100ms to form larger batches
     min_batch_size=1,  # Process single requests immediately if queue is empty
 )

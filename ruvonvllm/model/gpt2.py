@@ -653,6 +653,14 @@ class GPT2Model:
 
             # Forward pass for the entire batch
             with torch.no_grad():
+                if show_progress and step % 10 == 0:
+                    print(
+                        f"    Step {step}: Processing {len(active_sequences)} sequences"
+                    )
+                    print(f"    batch_tensor shape: {batch_tensor.shape}")
+                    if past_key_values is not None:
+                        print(f"    KV-cache shape: {past_key_values[0][0].shape}")
+
                 if step == 0:
                     # First step: process full sequences
                     full_batch_ids = []
@@ -684,6 +692,49 @@ class GPT2Model:
                     )
                 else:
                     # Subsequent steps: just process new tokens
+                    # IMPORTANT: Slice past_key_values to match active sequences
+                    if (
+                        past_key_values is not None
+                        and len(active_sequences) < batch_size
+                    ):
+                        try:
+                            # past_key_values is a tuple of tuples: ((k1, v1), (k2, v2), ...)
+                            # Each k, v has shape: (batch_size, num_heads, seq_len, head_dim)
+                            # We need to slice the batch dimension to match current active sequences
+                            sliced_past_key_values = []
+                            for layer_idx, layer_cache in enumerate(past_key_values):
+                                k_cache, v_cache = layer_cache
+
+                                # Defensive check: ensure active_sequences are valid indices
+                                if max(active_sequences) >= k_cache.shape[0]:
+                                    raise ValueError(
+                                        f"Invalid sequence index in active_sequences: {active_sequences}, KV-cache batch size: {k_cache.shape[0]}"
+                                    )
+
+                                # Slice to keep only active sequences using their indices
+                                sliced_k = k_cache[active_sequences]
+                                sliced_v = v_cache[active_sequences]
+                                sliced_past_key_values.append((sliced_k, sliced_v))
+
+                            past_key_values = tuple(sliced_past_key_values)
+
+                            if show_progress:
+                                print(
+                                    f"    Sliced KV-cache from {batch_size} to {len(active_sequences)} sequences"
+                                )
+
+                        except Exception as e:
+                            # Log KV-cache slicing error with detailed info
+                            print(f"❌ KV-cache slicing error at step {step}:")
+                            print(f"   active_sequences: {active_sequences}")
+                            print(f"   batch_size: {batch_size}")
+                            if past_key_values:
+                                print(
+                                    f"   KV-cache shape: {past_key_values[0][0].shape}"
+                                )
+                            print(f"   Error: {e}")
+                            raise e
+
                     outputs = self.model(
                         batch_tensor,
                         past_key_values=past_key_values,
