@@ -578,81 +578,130 @@ class GPT2Model:
 
     def generate_batch_with_sampling(
         self,
-        batch_input_ids: List[torch.Tensor],
-        max_length: int = 20,
-        temperature: float = 1.0,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
-        use_cache: bool = True,
-        show_progress: bool = False,
+        batch_input_ids: List[torch.Tensor],  # List of input tensors, one per request
+        max_length: int = 20,  # Maximum number of NEW tokens to generate
+        temperature: float = 1.0,  # Controls randomness (1.0 = normal, <1 = focused, >1 = creative)
+        top_k: Optional[int] = None,  # Limit sampling to top-k most likely tokens
+        top_p: Optional[
+            float
+        ] = None,  # Nucleus sampling: cumulative probability threshold
+        use_cache: bool = True,  # Enable KV-cache for massive speedup
+        show_progress: bool = False,  # Print detailed progress information
     ) -> List[List[int]]:
         """
-        Generate text for multiple requests in a single batched forward pass.
+        CORE BATCHED GENERATION: Process multiple requests simultaneously in a single model forward pass.
 
-        This is the core of continuous batching - processing multiple requests
-        simultaneously to improve throughput while maintaining the same memory footprint.
+        This is the heart of prefill batching (Part 7) - instead of processing requests one-by-one,
+        we batch them together to maximize GPU utilization and achieve 4x+ throughput improvements.
+
+        🎯 KEY CONCEPTS:
+        - PREFILL BATCHING: Process multiple prompts together in parallel
+        - KV-CACHE OPTIMIZATION: Reuse attention computations from previous tokens
+        - DYNAMIC SEQUENCE MANAGEMENT: Handle sequences that finish at different times
+        - MEMORY EFFICIENCY: Shared model weights, efficient tensor operations
 
         Args:
-            batch_input_ids: List of input token tensors, one per request
-            max_length: Maximum number of NEW tokens to generate per request
-            temperature: Randomness control for sampling
-            top_k: Number of top tokens to consider for sampling
-            top_p: Cumulative probability threshold for nucleus sampling
-            use_cache: Whether to use KV-cache optimization
-            show_progress: Whether to print generation details
+            batch_input_ids: List of tokenized input sequences, e.g., [tensor([1,2,3]), tensor([4,5])]
+            max_length: Number of NEW tokens to generate (not total sequence length)
+            temperature: Sampling randomness - 0.1=very focused, 1.0=normal, 2.0=very creative
+            top_k: Keep only the k most likely tokens for sampling (None = disabled)
+            top_p: Nucleus sampling - keep tokens until cumulative probability reaches p (None = disabled)
+            use_cache: Enable KV-cache for 10x+ speedup by reusing attention computations
+            show_progress: Print step-by-step generation details for debugging
 
         Returns:
-            List of token sequences (one per input request)
+            List of complete token sequences, one per input request
+            Example: [[1,2,3,15,22,8], [4,5,12,19,7]] for 2 input sequences
         """
+        # === SAFETY CHECKS ===
+        # Ensure model is loaded before attempting generation
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
+        # Handle empty input gracefully
         if not batch_input_ids:
             return []
 
+        # Calculate batch size for tracking and progress reporting
         batch_size = len(batch_input_ids)
         if show_progress:
             print(f"🚀 Starting batched generation for {batch_size} requests")
 
-        # Convert all inputs to lists for easier manipulation
-        batch_sequences = []
-        original_lengths = []
+        # === DATA PREPARATION ===
+        # Convert tensor inputs to Python lists for easier manipulation during generation
+        # We'll build up these sequences token by token as we generate
+        batch_sequences = []  # Will contain: [[prompt1_tokens...], [prompt2_tokens...], ...]
+        original_lengths = []  # Track original prompt lengths to calculate new tokens generated
 
+        # Process each input sequence (one per request in the batch)
         for input_ids in batch_input_ids:
-            sequence = input_ids.squeeze().tolist()
-            batch_sequences.append(sequence)
-            original_lengths.append(len(sequence))
+            # Convert from tensor shape (1, seq_len) to list [token1, token2, ...]
+            sequence = (
+                input_ids.squeeze().tolist()
+            )  # Remove batch dimension, convert to Python list
+            batch_sequences.append(sequence)  # Add to our working batch
+            original_lengths.append(
+                len(sequence)
+            )  # Remember original length for metrics
 
-        # Track which sequences are still generating
+        # === DYNAMIC SEQUENCE TRACKING ===
+        # Track which sequences are still actively generating (haven't finished yet)
+        # Initially all sequences are active: [0, 1, 2, 3] for batch_size=4
+        # As sequences finish (hit EOS or max length), we remove them from this list
         active_sequences = list(range(batch_size))
 
-        # Initialize cache for batched processing
+        # === KV-CACHE INITIALIZATION ===
+        # Initialize the key-value cache to None - will be populated after first forward pass
+        # KV-cache stores attention keys & values to avoid recomputing them for previous tokens
+        # This is THE optimization that makes autoregressive generation fast
         past_key_values = None
 
+        # === MAIN GENERATION LOOP ===
+        # Generate one token at a time, up to max_length new tokens
         for step in range(max_length):
+            # === EARLY TERMINATION CHECK ===
+            # If all sequences have finished (hit EOS token), stop generation early
+            # This saves computation when all requests complete before max_length
             if not active_sequences:
-                break  # All sequences finished
+                break  # All sequences finished - no more work to do!
 
+            # === PROGRESS REPORTING ===
+            # Print progress every 5 steps to track generation without overwhelming output
             if show_progress and step % 5 == 0:
                 print(
                     f"  Step {step}/{max_length}, {len(active_sequences)} active sequences"
                 )
 
-            # Prepare current batch (only active sequences)
-            current_batch_ids = []
-            current_indices = []
+            # === BATCH PREPARATION FOR CURRENT STEP ===
+            # Prepare input for this generation step - only include sequences still generating
+            current_batch_ids = []  # Will contain the input tokens for this step
+            current_indices = []  # Maps batch position to original sequence index
 
+            # Build batch containing only active sequences
             for i, seq_idx in enumerate(active_sequences):
-                current_batch_ids.append([batch_sequences[seq_idx][-1]])  # Last token
-                current_indices.append(seq_idx)
+                # For step > 0: we only need the LAST token from each sequence (incremental generation)
+                # For step = 0: we'll handle full sequences differently below
+                current_batch_ids.append(
+                    [batch_sequences[seq_idx][-1]]
+                )  # Get last token as list
+                current_indices.append(
+                    seq_idx
+                )  # Remember which original sequence this corresponds to
 
-            # Pad the batch to the same length (in this case, all are length 1)
+            # === TENSOR CREATION ===
+            # Convert our batch of token IDs to a PyTorch tensor for model input
+            # Shape will be: (num_active_sequences, 1) for steps > 0
+            # dtype=long for token IDs, device=self.device for GPU/CPU consistency
             batch_tensor = torch.tensor(
                 current_batch_ids, dtype=torch.long, device=self.device
             )
 
-            # Forward pass for the entire batch
+            # === MODEL FORWARD PASS ===
+            # Run the transformer model on our batch - this is where the magic happens!
+            # torch.no_grad() disables gradient computation for inference (saves memory & speed)
             with torch.no_grad():
+                # === DEBUG LOGGING ===
+                # Print detailed tensor shapes every 10 steps for debugging
                 if show_progress and step % 10 == 0:
                     print(
                         f"    Step {step}: Processing {len(active_sequences)} sequences"
@@ -661,61 +710,120 @@ class GPT2Model:
                     if past_key_values is not None:
                         print(f"    KV-cache shape: {past_key_values[0][0].shape}")
 
+                # === STEP 0: PREFILL PHASE ===
+                # First step is special - we process the FULL input sequences to populate KV-cache
+                # This is called "prefill" because we're pre-filling the attention cache
                 if step == 0:
-                    # First step: process full sequences
-                    full_batch_ids = []
+                    # === PREFILL: PROCESS FULL INPUT SEQUENCES ===
+                    # In the first step, we need to process ALL tokens from each input sequence
+                    # to populate the KV-cache with attention states for every input token
+
+                    full_batch_ids = []  # Will contain padded sequences: [[pad,pad,1,2,3], [4,5,6,7,8]]
+
+                    # Find longest sequence to determine padding target
+                    # All sequences must be same length for efficient batched matrix operations
                     max_seq_len = max(len(seq) for seq in batch_sequences)
 
-                    # Pad sequences to same length
+                    # === SEQUENCE PADDING ===
+                    # Pad all sequences to the same length for batched processing
                     for seq_idx in active_sequences:
-                        seq = batch_sequences[seq_idx].copy()
-                        # Pad with tokenizer's pad token (0 for GPT-2)
-                        while len(seq) < max_seq_len:
-                            seq = [0] + seq  # Left padding
-                        full_batch_ids.append(seq)
+                        seq = batch_sequences[
+                            seq_idx
+                        ].copy()  # Don't modify original sequence
 
+                        # LEFT-PAD with zeros (GPT-2's pad token is 0)
+                        # Left padding is important because we want attention to focus on the END
+                        # Example: [1,2,3] becomes [0,0,0,0,1,2,3] if max_len=7
+                        while len(seq) < max_seq_len:
+                            seq = [0] + seq  # Add padding to the LEFT (beginning)
+
+                        full_batch_ids.append(seq)  # Add padded sequence to batch
+
+                    # === CONVERT TO TENSOR ===
+                    # Create tensor for full sequences: shape (batch_size, max_seq_len)
                     batch_tensor = torch.tensor(
                         full_batch_ids, dtype=torch.long, device=self.device
                     )
 
-                    # Create attention mask (1 for real tokens, 0 for padding)
-                    attention_mask = torch.zeros_like(batch_tensor)
+                    # === ATTENTION MASK CREATION ===
+                    # Tell the model which tokens are real vs padding
+                    # 1 = real token (attend to this), 0 = padding (ignore this)
+                    attention_mask = torch.zeros_like(
+                        batch_tensor
+                    )  # Start with all zeros (all padding)
+
                     for i, seq_idx in enumerate(active_sequences):
-                        original_len = len(batch_sequences[seq_idx])
+                        original_len = len(
+                            batch_sequences[seq_idx]
+                        )  # Length of real (non-padded) sequence
+                        # Set the LAST original_len positions to 1 (real tokens at the end due to left padding)
                         attention_mask[i, -original_len:] = 1
 
+                    # === PREFILL FORWARD PASS ===
+                    # Run the full transformer forward pass on all input tokens
+                    # This populates the KV-cache for efficient subsequent generation
                     outputs = self.model(
-                        batch_tensor,
-                        attention_mask=attention_mask,
-                        past_key_values=past_key_values,
-                        use_cache=use_cache,
+                        batch_tensor,  # Input tokens: (batch_size, seq_len)
+                        attention_mask=attention_mask,  # Mask: (batch_size, seq_len)
+                        past_key_values=past_key_values,  # None for first step
+                        use_cache=use_cache,  # True - we want to cache K,V for speed
                     )
                 else:
-                    # Subsequent steps: just process new tokens
-                    # IMPORTANT: Slice past_key_values to match active sequences
+                    # === STEP N>0: INCREMENTAL DECODE PHASE ===
+                    # For subsequent steps, we only process the NEXT token being generated
+                    # The KV-cache contains all previous attention states, so we're very efficient
+
+                    # === CRITICAL KV-CACHE MANAGEMENT ===
+                    # Problem: Some sequences may have finished, so active_sequences < original batch_size
+                    # Solution: Slice the KV-cache to match only the currently active sequences
                     if (
-                        past_key_values is not None
-                        and len(active_sequences) < batch_size
+                        past_key_values
+                        is not None  # We have a cache from previous steps
+                        and len(active_sequences)
+                        < batch_size  # Some sequences have finished
                     ):
                         try:
-                            # past_key_values is a tuple of tuples: ((k1, v1), (k2, v2), ...)
-                            # Each k, v has shape: (batch_size, num_heads, seq_len, head_dim)
-                            # We need to slice the batch dimension to match current active sequences
-                            sliced_past_key_values = []
-                            for layer_idx, layer_cache in enumerate(past_key_values):
-                                k_cache, v_cache = layer_cache
+                            # === KV-CACHE STRUCTURE EXPLANATION ===
+                            # past_key_values is a tuple of tuples, one per transformer layer:
+                            # (
+                            #   (key_layer_0, value_layer_0),    # Layer 0 cache
+                            #   (key_layer_1, value_layer_1),    # Layer 1 cache
+                            #   ...                               # 12 layers for GPT-2
+                            # )
+                            # Each key/value tensor has shape: (batch_size, num_heads, seq_len, head_dim)
+                            #                                  (     4    ,    12   ,   50    ,   64   )
 
-                                # Defensive check: ensure active_sequences are valid indices
+                            sliced_past_key_values = []  # Will contain cache for only active sequences
+
+                            # Process each transformer layer's cache
+                            for layer_idx, layer_cache in enumerate(past_key_values):
+                                k_cache, v_cache = (
+                                    layer_cache  # Extract key and value cache for this layer
+                                )
+
+                                # === SAFETY CHECK ===
+                                # Ensure all indices in active_sequences are valid for the cache
                                 if max(active_sequences) >= k_cache.shape[0]:
                                     raise ValueError(
-                                        f"Invalid sequence index in active_sequences: {active_sequences}, KV-cache batch size: {k_cache.shape[0]}"
+                                        f"Invalid sequence index in active_sequences: {active_sequences}, "
+                                        f"KV-cache batch size: {k_cache.shape[0]}"
                                     )
 
-                                # Slice to keep only active sequences using their indices
-                                sliced_k = k_cache[active_sequences]
-                                sliced_v = v_cache[active_sequences]
-                                sliced_past_key_values.append((sliced_k, sliced_v))
+                                # === SLICE CACHE TO ACTIVE SEQUENCES ONLY ===
+                                # Use fancy indexing to keep only rows corresponding to active sequences
+                                # Example: if active_sequences=[0,2], keep batch positions 0 and 2
+                                sliced_k = k_cache[
+                                    active_sequences
+                                ]  # Shape: (len(active_sequences), num_heads, seq_len, head_dim)
+                                sliced_v = v_cache[
+                                    active_sequences
+                                ]  # Shape: (len(active_sequences), num_heads, seq_len, head_dim)
 
+                                sliced_past_key_values.append(
+                                    (sliced_k, sliced_v)
+                                )  # Store sliced cache for this layer
+
+                            # Replace the full cache with our sliced version
                             past_key_values = tuple(sliced_past_key_values)
 
                             if show_progress:
@@ -724,7 +832,8 @@ class GPT2Model:
                                 )
 
                         except Exception as e:
-                            # Log KV-cache slicing error with detailed info
+                            # === ERROR HANDLING ===
+                            # If KV-cache slicing fails, provide detailed debugging information
                             print(f"❌ KV-cache slicing error at step {step}:")
                             print(f"   active_sequences: {active_sequences}")
                             print(f"   batch_size: {batch_size}")
@@ -735,59 +844,94 @@ class GPT2Model:
                             print(f"   Error: {e}")
                             raise e
 
+                    # === INCREMENTAL FORWARD PASS ===
+                    # Process only the new tokens (1 token per sequence) using cached attention
+                    # This is MUCH faster than reprocessing the entire sequence
                     outputs = self.model(
-                        batch_tensor,
-                        past_key_values=past_key_values,
-                        use_cache=use_cache,
+                        batch_tensor,  # New tokens only: shape (num_active, 1)
+                        past_key_values=past_key_values,  # Cached attention from previous tokens
+                        use_cache=use_cache,  # Continue building the cache
                     )
 
-                logits = outputs.logits  # Shape: (batch_size, seq_len, vocab_size)
+                # === EXTRACT MODEL OUTPUT ===
+                # Get the logits (raw scores) from the model output
+                # Shape: (num_active_sequences, seq_len, vocab_size)
+                # For step 0: seq_len = max_seq_len (full sequences)
+                # For step N>0: seq_len = 1 (just the new token)
+                logits = outputs.logits
 
+                # === UPDATE KV-CACHE ===
+                # Store the updated key-value cache for the next generation step
+                # This cache now includes attention states for the tokens we just processed
                 if use_cache:
                     past_key_values = outputs.past_key_values
 
-            # Sample next tokens for each sequence in the batch
-            next_tokens = []
-            sequences_to_remove = []
+            # === TOKEN SAMPLING PHASE ===
+            # Now we need to sample the next token for each active sequence
+            next_tokens = []  # Will store the sampled token IDs
+            sequences_to_remove = []  # Track sequences that finish this step
 
+            # Process each sequence in the current batch
             for i, seq_idx in enumerate(current_indices):
-                # Get logits for the last position of this sequence
-                sequence_logits = logits[i, -1, :]  # Shape: (vocab_size,)
+                # === EXTRACT LOGITS FOR NEXT TOKEN PREDICTION ===
+                # Get logits for the LAST position of this sequence (where we predict next token)
+                # Shape: (vocab_size,) - one score for each possible token in vocabulary
+                sequence_logits = logits[i, -1, :]
 
-                # Sample next token using the same strategies as single generation
+                # === ADVANCED SAMPLING ===
+                # Use sophisticated sampling strategies for creative and controlled generation
+                # This is where temperature, top-k, and nucleus (top-p) sampling happen
                 next_token_id = sample_token(
-                    sequence_logits,
-                    temperature=temperature,
-                    top_k=top_k,
-                    top_p=top_p,
+                    sequence_logits,  # Raw scores for all possible tokens
+                    temperature=temperature,  # Controls randomness: <1.0=focused, >1.0=creative
+                    top_k=top_k,  # Keep only top-k most likely tokens (None=disabled)
+                    top_p=top_p,  # Nucleus sampling: keep tokens until cumulative prob reaches p
                 )
 
-                # Add token to sequence
+                # === UPDATE SEQUENCE ===
+                # Add the newly sampled token to this sequence's growing token list
                 batch_sequences[seq_idx].append(next_token_id)
-                next_tokens.append(next_token_id)
+                next_tokens.append(next_token_id)  # Track for debugging
 
-                # Check if this sequence should stop
+                # === SEQUENCE COMPLETION CHECK ===
+                # Check if this sequence should stop generating (hit end-of-sequence token)
                 if (
-                    hasattr(self.model.config, "eos_token_id")
-                    and next_token_id == self.model.config.eos_token_id
+                    hasattr(
+                        self.model.config, "eos_token_id"
+                    )  # Model has an EOS token defined
+                    and next_token_id
+                    == self.model.config.eos_token_id  # We just generated EOS
                 ):
-                    sequences_to_remove.append(seq_idx)
+                    sequences_to_remove.append(
+                        seq_idx
+                    )  # Mark this sequence as finished
                     if show_progress:
                         print(f"    Sequence {seq_idx} finished (EOS token)")
 
-            # Remove finished sequences from active list
+            # === DYNAMIC BATCH MANAGEMENT ===
+            # Remove sequences that finished this step from the active list
+            # This is key to continuous batching - the batch composition changes over time
             for seq_idx in sequences_to_remove:
-                active_sequences.remove(seq_idx)
+                active_sequences.remove(seq_idx)  # No longer process this sequence
 
+        # === GENERATION COMPLETE ===
+        # All sequences have either finished (hit EOS) or reached max_length
+
+        # === FINAL STATISTICS ===
+        # Calculate and display generation statistics for educational purposes
         if show_progress:
+            # Count total new tokens generated across all sequences
             total_generated = sum(
-                len(seq) - orig_len
+                len(seq) - orig_len  # Current length minus original prompt length
                 for seq, orig_len in zip(batch_sequences, original_lengths)
             )
             print(
                 f"🎉 Batched generation complete! Generated {total_generated} total tokens"
             )
 
+        # === RETURN RESULTS ===
+        # Return the complete sequences (original prompt + generated tokens)
+        # Each sequence in batch_sequences is now: [prompt_tokens... + generated_tokens...]
         return batch_sequences
 
     def generate_continuous_step(
