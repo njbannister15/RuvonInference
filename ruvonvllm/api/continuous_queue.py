@@ -450,67 +450,93 @@ class ContinuousBatchScheduler:
         3. Removes completed requests
         4. Repeats with dynamic batch composition
         """
+        # Import model classes - delayed to avoid circular imports during module init
         from ruvonvllm.model.gpt2 import GPT2Model
         from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 
-        # Load model and tokenizer once
-        model = GPT2Model("gpt2", device="cpu")
-        model.load_model()
-        tokenizer = GPT2TokenizerWrapper("gpt2")
+        # Load model and tokenizer once - expensive operations done once at startup
+        model = GPT2Model("gpt2", device="cpu")  # Initialize model wrapper
+        model.load_model()  # Load actual PyTorch model weights into memory
+        tokenizer = GPT2TokenizerWrapper("gpt2")  # Load tokenizer vocabulary
 
         logger.info("🚀 Starting continuous generation loop")
 
-        past_key_values = None
-        generation_step_counter = 0
+        # Initialize generation state - think of this as the "brain's working memory"
+        past_key_values = (
+            None  # KV-cache: stores attention patterns from previous tokens
+        )
+        generation_step_counter = 0  # Global step counter across all requests
 
-        while not self._shutdown:
+        # Main continuous loop - runs until shutdown signal received
+        while not self._shutdown:  # Keep processing until told to stop
             try:
-                # 1. Add waiting requests to current batch
-                added_count = self.add_waiting_requests_to_batch()
-                if added_count > 0:
+                # PHASE 1: DYNAMIC BATCH EXPANSION
+                # Try to add new waiting requests to current active batch
+                added_count = (
+                    self.add_waiting_requests_to_batch()
+                )  # Pull from waiting queue
+                if added_count > 0:  # If new requests joined the party...
                     logger.info(f"Added {added_count} new requests to batch")
-                    # Reset cache when batch composition changes significantly
-                    past_key_values = None
+                    # CACHE INVALIDATION: New batch composition breaks KV-cache assumptions
+                    past_key_values = (
+                        None  # Reset cache - like starting fresh conversation
+                    )
 
-                # 2. Check if we have any active requests
+                # PHASE 2: BATCH EXISTENCE CHECK
+                # Verify we have work to do - visualize as checking if anyone's in the room
                 if not self.current_batch or self.current_batch.size == 0:
-                    await asyncio.sleep(self.generation_interval)
-                    continue
+                    await asyncio.sleep(
+                        self.generation_interval
+                    )  # Sleep 10ms, check again
+                    continue  # Skip to next loop iteration
 
-                # 3. Prepare requests for generation
-                active_requests = self.current_batch.get_active_requests()
-                if not active_requests:
-                    await asyncio.sleep(self.generation_interval)
-                    continue
+                # PHASE 3: ACTIVE REQUEST FILTERING
+                # Get only requests that are still generating (not finished)
+                active_requests = (
+                    self.current_batch.get_active_requests()
+                )  # Filter out finished ones
+                if not active_requests:  # Everyone finished while we weren't looking
+                    await asyncio.sleep(
+                        self.generation_interval
+                    )  # Brief pause before rechecking
+                    continue  # Back to top of loop
 
-                # 4. Tokenize input for new requests (only on their first step)
-                for request in active_requests:
-                    if not request.input_tokens and hasattr(
-                        request.request_data, "prompt"
+                # PHASE 4: TOKENIZATION OF NEW ARRIVALS
+                # Convert text prompts to numbers for new requests only
+                for request in active_requests:  # Check each active request
+                    if (
+                        not request.input_tokens
+                        and hasattr(  # If no tokens yet AND has prompt
+                            request.request_data, "prompt"
+                        )
                     ):
-                        # Tokenize the prompt
+                        # TEXT→NUMBERS: Convert "Hello world" → [15496, 995]
                         input_ids = tokenizer.encode(
                             request.request_data.prompt, return_tensors=True
                         )
-                        request.input_tokens = input_ids.squeeze().tolist()
+                        request.input_tokens = (
+                            input_ids.squeeze().tolist()
+                        )  # Store as Python list
 
-                # 5. Generate next token for all active requests
+                # PHASE 5: THE MAGIC - PARALLEL TOKEN GENERATION
                 try:
+                    # BATCH INFERENCE: Process all requests in single GPU/CPU call
                     next_tokens, past_key_values, finished_flags = (
                         model.generate_continuous_step(
-                            active_requests=active_requests,
-                            past_key_values=past_key_values,
+                            active_requests=active_requests,  # All requests processed together
+                            past_key_values=past_key_values,  # Reuse attention from previous steps
                             show_progress=False,  # Set to True for debugging
                         )
                     )
 
-                    generation_step_counter += 1
-                    self.total_generation_steps += 1
+                    # PROGRESS TRACKING: Increment counters for monitoring
+                    generation_step_counter += 1  # Global step counter (all requests)
+                    self.total_generation_steps += 1  # Lifetime statistics
 
-                    if self.current_batch:
+                    if self.current_batch:  # Update batch-specific step counter
                         self.current_batch.generation_step += 1
 
-                    # Debug logging
+                    # PERIODIC LOGGING: Debug info every 10 steps to avoid spam
                     if generation_step_counter % 10 == 0:
                         logger.info(
                             f"Generation step {generation_step_counter}: "
@@ -518,68 +544,78 @@ class ContinuousBatchScheduler:
                             f"batch step {self.current_batch.generation_step if self.current_batch else 0}"
                         )
 
-                except Exception as e:
+                except Exception as e:  # Handle model inference failures
                     logger.error(f"Generation step failed: {e}")
-                    # Mark all requests as failed
+                    # FAILURE PROPAGATION: Mark all requests as failed
                     for request in active_requests:
-                        request.state = RequestState.FAILED
-                        request.error = str(e)
-                    await asyncio.sleep(self.generation_interval)
-                    continue
+                        request.state = RequestState.FAILED  # Update request status
+                        request.error = str(e)  # Store error message
+                    await asyncio.sleep(self.generation_interval)  # Wait before retry
+                    continue  # Skip rest of loop, try again
 
-                # 6. Remove completed requests and create results
-                completed_requests = self.remove_completed_requests()
-                for request in completed_requests:
+                # PHASE 6: GRADUATION CEREMONY - Handle completed requests
+                completed_requests = (
+                    self.remove_completed_requests()
+                )  # Extract finished ones
+                for request in completed_requests:  # Process each graduate
                     # Create result for completed request
-                    if request.state == RequestState.COMPLETED:
-                        # Decode the generated text
+                    if request.state == RequestState.COMPLETED:  # Success case only
+                        # TOKEN→TEXT: Convert [15496, 995, 318] → "Hello world is"
                         full_tokens = request.input_tokens + request.generated_tokens
-                        full_text = tokenizer.decode(full_tokens)
-                        generated_text = full_text[len(request.request_data.prompt) :]
+                        full_text = tokenizer.decode(full_tokens)  # Complete response
+                        generated_text = full_text[
+                            len(request.request_data.prompt) :
+                        ]  # Just new part
 
-                        # Create response in expected format
+                        # API RESPONSE CREATION: Package result in OpenAI-compatible format
                         from ruvonvllm.api.server import (
                             CompletionResponse,
                             CompletionChoice,
                         )
 
                         result = CompletionResponse(
-                            id=f"cmpl-{int(time.time())}-{request.id[:8]}",
-                            created=int(time.time()),
-                            model="gpt2",
+                            id=f"cmpl-{int(time.time())}-{request.id[:8]}",  # Unique response ID
+                            created=int(time.time()),  # Unix timestamp
+                            model="gpt2",  # Model identifier
                             choices=[
                                 CompletionChoice(
-                                    text=generated_text,
-                                    index=0,
-                                    finish_reason="stop"
+                                    text=generated_text,  # The actual generated text
+                                    index=0,  # Choice index (we only return one)
+                                    finish_reason="stop"  # Why generation stopped
                                     if len(request.generated_tokens)
                                     < request.max_tokens
-                                    else "length",
+                                    else "length",  # Hit token limit vs natural stop
                                 )
                             ],
-                            usage={
+                            usage={  # Token usage statistics
                                 "prompt_tokens": len(request.input_tokens),
                                 "completion_tokens": len(request.generated_tokens),
                                 "total_tokens": len(request.input_tokens)
                                 + len(request.generated_tokens),
                             },
                         )
-                        request.result = result
+                        request.result = result  # Store result in request object
 
-                # 7. Handle cache invalidation for dynamic batch changes
-                if completed_requests:
-                    # If requests completed, we need to reconstruct the cache
+                # PHASE 7: CACHE MANAGEMENT - Handle batch shrinkage
+                if completed_requests:  # If anyone graduated...
+                    # CACHE INVALIDATION: Batch composition changed, cache no longer valid
                     # This is a simplification - production systems use more sophisticated cache management
-                    past_key_values = None
+                    past_key_values = (
+                        None  # Reset to None - like forgetting conversation history
+                    )
 
-                # 8. Sleep briefly before next generation step
-                await asyncio.sleep(self.generation_interval)
+                # PHASE 8: HEART BEAT - Regulate loop timing
+                await asyncio.sleep(
+                    self.generation_interval
+                )  # Sleep 10ms - prevent CPU spinning
 
-            except Exception as e:
+            except Exception as e:  # Catch-all error handler for unexpected issues
                 logger.error(f"Continuous generation loop error: {e}")
-                await asyncio.sleep(1.0)  # Longer sleep on unexpected errors
+                await asyncio.sleep(
+                    1.0
+                )  # Longer sleep on unexpected errors - give system time to recover
 
-        logger.info("Continuous generation loop stopped")
+        logger.info("Continuous generation loop stopped")  # Clean shutdown message
 
     def shutdown(self):
         """Gracefully shutdown the continuous scheduler."""
