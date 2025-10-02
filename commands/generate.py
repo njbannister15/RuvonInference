@@ -430,7 +430,7 @@ def sample(
     """
     🎭 Generate creative text using advanced sampling strategies
 
-    This demonstrates Day 5's sampling techniques: temperature, top-k, and nucleus
+    This demonstrates Part 5's sampling techniques: temperature, top-k, and nucleus
     sampling to create more diverse and creative text generation beyond greedy decoding.
     """
 

@@ -316,7 +316,7 @@ Entropy reveals itself as the **fundamental quantity** underlying all our sampli
 
 By understanding and measuring entropy, we transform text generation from art to science. Our Part 5 implementation doesn't just generate creative text - it provides quantitative insight into the creativity-coherence tradeoff that governs all natural language generation.
 
-This theoretical foundation will prove invaluable as we scale up in subsequent days, providing the mathematical tools to optimize, debug, and improve our tiny vLLM engine's output quality.
+This theoretical foundation will prove invaluable as we scale up in subsequent Parts, providing the mathematical tools to optimize, debug, and improve our tiny vLLM engine's output quality.
 
 ---
 

@@ -1,7 +1,7 @@
 """
 FastAPI server for RuvonVLLM inference engine.
 
-This module implements Day 4's HTTP API server with a /completions endpoint
+This module implements Part 4's HTTP API server with a /completions endpoint
 that provides streaming text generation compatible with OpenAI-like interfaces.
 """
 
@@ -556,7 +556,7 @@ if __name__ == "__main__":
     import uvicorn
 
     print("🚀 Starting RuvonVLLM API Server...")
-    print("📚 Day 4: HTTP Server with Streaming")
+    print("📚 Part 4: HTTP Server with Streaming")
     print("-" * 50)
 
     uvicorn.run(

@@ -3,7 +3,7 @@
 RuvonVLLM CLI - A beautiful command-line interface for our tiny vLLM inference engine.
 
 This CLI provides an interactive and visually appealing way to demonstrate our
-inference engine capabilities, starting with Day 1's tokenizer and forward pass demo.
+inference engine capabilities, starting with Part 1's tokenizer and forward pass demo.
 """
 
 import typer
@@ -85,7 +85,7 @@ def serve(
     🌐 Start the HTTP API server
 
     This starts the FastAPI server with streaming text completion endpoints,
-    demonstrating Day 4's HTTP server with /completions endpoint.
+    demonstrating Part 4's HTTP server with /completions endpoint.
     """
     # Show header
     console.print(create_header())
@@ -225,7 +225,7 @@ def info():
 [bold blue]🚀 RuvonVLLM - Tiny vLLM Inference Engine[/bold blue]
 
 A miniature but real inference system for transformer models, built from scratch
-over 20 days. This project demonstrates modern LLM serving techniques including:
+over 20 Parts. This project demonstrates modern LLM serving techniques including:
 
 [bold green]📦 Current Features:[/bold green]
 • 🔤 GPT-2 tokenization and text processing
@@ -242,13 +242,13 @@ over 20 days. This project demonstrates modern LLM serving techniques including:
 • 📊 Real-time monitoring dashboard (htop for LLM servers)
 
 [bold yellow]🎯 Upcoming Features:[/bold yellow]
-• ⚡ Continuous batching (Days 6-8)
-• 📊 Telemetry and metrics (Day 10)
-• 🚀 FlashAttention integration (Day 11)
-• 🔧 Custom Triton kernels (Day 12)
-• 📄 Paged KV-cache allocator (Day 13)
-• 🎭 Speculative decoding (Day 16)
-• ⚖️  Quantization support (Day 17)
+• ⚡ Continuous batching (Parts 6-8)
+• 📊 Telemetry and metrics (Part 10)
+• 🚀 FlashAttention integration (Part 11)
+• 🔧 Custom Triton kernels (Part 12)
+• 📄 Paged KV-cache allocator (Part 13)
+• 🎭 Speculative decoding (Part 16)
+• ⚖️  Quantization support (Part 17)
 
 [bold cyan]Usage:[/bold cyan]
 ```

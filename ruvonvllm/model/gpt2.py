@@ -2,7 +2,7 @@
 GPT-2 model loader and wrapper.
 
 This module provides functionality to load and use GPT-2 models from HuggingFace.
-We start with the 124M parameter model for Day 1 of our tiny vLLM implementation.
+We start with the 124M parameter model for Part 1 of our tiny vLLM implementation.
 """
 
 import logging
@@ -22,7 +22,7 @@ class GPT2Model:
 
     This class encapsulates the model loading and provides a clean interface
     for forward passes. We start with the smallest GPT-2 model (124M parameters)
-    and will scale up in later days.
+    and will scale up in later Parts.
     """
 
     def __init__(self, model_name: str = "gpt2", device: str = "cpu"):

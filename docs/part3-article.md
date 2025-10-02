@@ -136,11 +136,11 @@ The combination of KV-cache optimization + HTTP API will create a genuinely usab
 4. **Benchmark everything**: Measure improvements quantitatively
 5. **Cache invalidation is hard**: But cache creation can be simple and powerful
 
-From 1.7 seconds to 0.3 seconds for 10 tokens. From concept to production-ready optimization in one day. The heart of our inference engine is now beating fast.
+From 1.7 seconds to 0.3 seconds for 10 tokens. From concept to production-ready optimization in one Part. The heart of our inference engine is now beating fast.
 
 ---
 
-*This is part of a 20-day series building a tiny vLLM inference engine from scratch. Follow along as we add HTTP APIs, continuous batching, FlashAttention, and more.*
+*This is part of a 20-Part series building a tiny vLLM inference engine from scratch. Follow along as we add HTTP APIs, continuous batching, FlashAttention, and more.*
 
 ## The Speed of Progress
 

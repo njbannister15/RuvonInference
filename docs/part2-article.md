@@ -2,7 +2,7 @@
 
 *From single predictions to complete narratives: implementing greedy decoding*
 
-Previously we built the foundation - loading GPT-2, tokenizing text, and getting single predictions. Today, we taught our transformer to tell complete stories by implementing the greedy decode loop. The result? Our inference engine can now generate coherent text sequences, one carefully chosen token at a time.
+Previously we built the foundation - loading GPT-2, tokenizing text, and getting single predictions. ToPart, we taught our transformer to tell complete stories by implementing the greedy decode loop. The result? Our inference engine can now generate coherent text sequences, one carefully chosen token at a time.
 
 ## What We Built
 
@@ -118,4 +118,4 @@ This optimization will:
 
 ---
 
-*This is part of a 20-day series building a tiny vLLM inference engine from scratch. Follow along as we add KV-caching, HTTP APIs, continuous batching, and more.*
+*This is part of a 20-Part series building a tiny vLLM inference engine from scratch. Follow along as we add KV-caching, HTTP APIs, continuous batching, and more.*

@@ -324,7 +324,7 @@ Our test suite demonstrates the actual functionality:
 # From test_batch_generation_integration.py - actual test
 def test_specific_prompts_batch_generation(self, model, tokenizer):
     """Test batch generation with specific sentence prompts."""
-    prompts = ["to be or not to", "its great to be", "today is a good day to"]
+    prompts = ["to be or not to", "its great to be", "toPart is a good Part to"]
 
     batch_input_ids = []
     original_lengths = []

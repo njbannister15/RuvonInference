@@ -291,7 +291,7 @@ high_temp_sample = sample_with_temperature(logits, temperature=2.0)
 ```
 
 **Context in RuvonVLLM Sampling**:
-In our Day 5 sampling implementation, `torch.multinomial` is the core function that enables creative text generation:
+In our Part 5 sampling implementation, `torch.multinomial` is the core function that enables creative text generation:
 
 ```python
 # From ruvonvllm/sampling/strategies.py
