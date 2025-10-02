@@ -513,7 +513,7 @@ class BatchedRequestQueue:
 
 # Global batched request queue instance
 batched_request_queue = BatchedRequestQueue(
-    max_batch_size=16,  # Process up to 16 requests together
+    max_batch_size=32,  # Process up to 32 requests together
     max_wait_time=0.1,  # Wait max 100ms to form larger batches
     min_batch_size=1,  # Process single requests immediately if queue is empty
 )
