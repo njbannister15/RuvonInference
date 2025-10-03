@@ -2,7 +2,7 @@
 GPT-2 model loader and wrapper.
 
 This module provides functionality to load and use GPT-2 models from HuggingFace.
-We start with the 124M parameter model for Part 1 of our tiny vLLM implementation.
+We start with the 124M parameter model for Part 1 of our educational inference engine.
 """
 
 import logging

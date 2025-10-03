@@ -4,7 +4,7 @@
 
 ## Overview
 
-In Part 8 of our 20-part vLLM series, we implement **continuous batching** - an advanced optimization that allows requests to join and leave batches dynamically during generation. This builds upon Part 7's prefill batching by removing fixed batch boundaries, enabling requests to have independent lifecycles within a continuously evolving batch.
+In Part 8 of our 20-part inference engine series, we implement **continuous batching** - an advanced optimization that allows requests to join and leave batches dynamically during generation. This builds upon Part 7's prefill batching by removing fixed batch boundaries, enabling requests to have independent lifecycles within a continuously evolving batch.
 
 ## From Prefill Batching to Continuous Batching
 
@@ -541,5 +541,13 @@ The implementation shows:
 - **Where** future optimizations can be applied
 
 This foundation prepares us for more advanced optimizations in future parts, such as intelligent cache slicing, predictive batch composition, and hardware-specific optimizations that power production LLM serving systems.
+
+---
+
+## Navigation
+
+← **Previous**: [Part 7: Prefill Batching](part7-article.md) | **Next**: Part 9: FlashAttention Integration (Coming Soon) →
+
+---
 
 *Next up: Advanced cache management techniques to achieve production-grade efficiency in continuous batching systems.*

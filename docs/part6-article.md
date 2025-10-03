@@ -1,10 +1,10 @@
 # Part 6: Request Queue System and Sequential Processing Architecture
 
-*Building a production-ready inference queue with real-time monitoring and stress testing capabilities*
+*Building a production-ready inference queue with real-time monitoring and modular CLI architecture*
 
 ## Overview
 
-In Part 6 of our 20-part vLLM series, we implement a comprehensive request queue system that handles multiple concurrent requests through sequential processing. This foundational architecture demonstrates the core principles of production LLM serving while setting the stage for advanced batching techniques in Parts 7-8.
+In Part 6 of our 20-part inference engine series, we implement a comprehensive request queue system that handles multiple concurrent requests through sequential processing. This educational implementation demonstrates core principles of production LLM serving (inspired by systems like vLLM) while setting the stage for advanced batching techniques in Parts 7-8.
 
 ## What We Built
 
@@ -14,39 +14,160 @@ In Part 6 of our 20-part vLLM series, we implement a comprehensive request queue
 - **Comprehensive Statistics**: Queue depth, processing times, throughput metrics
 
 ### 📊 Real-Time Monitoring Dashboard
-- **Live CLI Interface**: 4-panel dashboard using Rich Live functionality
+- **Live CLI Interface**: Multi-panel dashboard using Rich Live functionality
 - **Queue Statistics**: Real-time queue size, processing status, and performance metrics
 - **Request Tracking**: Active request monitoring and recent completion history
 - **Server Health**: Model status and system health indicators
 
-### 🧪 Advanced Stress Testing
-- **Incremental Load Testing**: Sends requests in increasing batches (10, 20, 30, 40...)
-- **Rapid-Fire Testing**: Concurrent request flooding to demonstrate queue behavior
-- **Real-Time Results**: Live-updating tables showing success rates and performance
+### 🧪 Stress Testing Capabilities
+- **Load Testing Commands**: Built-in stress testing through CLI
+- **Concurrent Request Handling**: Demonstrates queue behavior under load
+- **Real-Time Results**: Live-updating performance metrics
 
 ### 🏗️ Modular CLI Architecture
 - **Organized Command Structure**: Separated concerns into focused modules
 - **Shared Utilities**: Common functionality for server management and monitoring
-- **Clean Code Organization**: Reduced main CLI from 2100+ to 243 lines
+- **Clean Code Organization**: Structured command hierarchy
 
-## Current Queue Architecture: Sequential Processing
+## Sequential Queue Implementation
 
-### Why Processing Never Goes Above 1
+### Core Architecture
 
-One key observation when monitoring the queue is that **"Processing" never exceeds 1**. This is by design and reveals the fundamental architecture choice we've made:
+The sequential processing system is built around the `RequestQueue` class:
 
 ```python
-# Simplified queue processing logic
+# From sequential_queue.py - actual implementation
 class RequestQueue:
-    async def process_queue(self):
-        while True:
-            if self.queue:
-                request = self.queue.pop(0)  # Take first request
-                request.status = "processing"
-                await self.process_single_request(request)  # Process ONE at a time
-                request.status = "completed"
-            await asyncio.sleep(0.1)  # Check for next request
+    """
+    Sequential request queue manager.
+
+    This class manages a FIFO queue of requests and processes them one at a time.
+    It provides thread-safe operations and detailed monitoring capabilities.
+    """
+
+    def __init__(self):
+        """Initialize the request queue."""
+        self._queue: Queue[QueuedRequest] = Queue()
+        self._requests: Dict[str, QueuedRequest] = {}
+        self._current_request: Optional[QueuedRequest] = None
+        self._lock = threading.Lock()
+        self._processing = False
+        self._total_processed = 0
+        self._total_failed = 0
 ```
+
+### Request Lifecycle Management
+
+Each request goes through distinct states:
+
+```python
+# From sequential_queue.py - actual request states
+class RequestStatus(Enum):
+    """Status of a request in the queue."""
+
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+```
+
+### Request Data Structure
+
+The system tracks comprehensive request information:
+
+```python
+# From sequential_queue.py - actual QueuedRequest class
+@dataclass
+class QueuedRequest:
+    """
+    A request in the processing queue.
+
+    This tracks everything needed to process a request and return the result
+    to the correct client, including timing information for monitoring.
+    """
+
+    id: str
+    request_data: Any  # CompletionRequest object
+    status: RequestStatus
+    created_at: float
+    started_at: Optional[float] = None
+    completed_at: Optional[float] = None
+    result: Optional[Any] = None
+    error: Optional[str] = None
+
+    @property
+    def wait_time(self) -> Optional[float]:
+        """Time spent waiting in queue before processing started."""
+        if self.started_at is None:
+            return None
+        return self.started_at - self.created_at
+
+    @property
+    def processing_time(self) -> Optional[float]:
+        """Time spent processing the request."""
+        if self.started_at is None or self.completed_at is None:
+            return None
+        return self.completed_at - self.started_at
+```
+
+## Strategy Pattern Integration
+
+The sequential processing integrates with the strategy pattern:
+
+```python
+# From strategies/sequential.py - actual implementation
+class SequentialQueueStrategy(QueueStrategy):
+    """
+    Sequential processing strategy that handles one request at a time.
+
+    This is the simplest queue strategy, processing requests in FIFO order
+    without any batching optimizations. It provides:
+    - Predictable latency per request
+    - Simple resource management
+    - Easy debugging and monitoring
+    - Guaranteed sequential execution
+    """
+
+    def __init__(self):
+        """Initialize the sequential queue strategy."""
+        self._queue = sequential_queue
+
+    async def process_request(self, request: "CompletionRequest") -> "CompletionResponse":
+        """
+        Process a single request through the sequential queue.
+
+        The request is added to the queue and processed when its turn comes.
+        This ensures fair ordering and prevents resource conflicts.
+        """
+        # Add request to sequential queue
+        request_id = self._queue.add_request(request)
+
+        # Wait for request to complete with timeout
+        max_wait_time = 300  # 5 minutes timeout
+        start_time = time.time()
+
+        while time.time() - start_time < max_wait_time:
+            queued_request = self._queue.get_request_status(request_id)
+
+            if queued_request is None:
+                raise Exception("Request not found in sequential queue")
+
+            if queued_request.status == RequestStatus.COMPLETED:
+                return queued_request.result
+
+            elif queued_request.status == RequestStatus.FAILED:
+                raise Exception(f"Request failed: {queued_request.error}")
+
+            # Still processing, wait a bit
+            await asyncio.sleep(0.1)
+
+        # Request timed out
+        raise Exception("Request timeout after 5 minutes")
+```
+
+## Why Processing Never Goes Above 1
+
+One key observation when monitoring the queue is that **"Processing" never exceeds 1**. This is by design and reveals the fundamental architecture choice we've made:
 
 ### Sequential Processing Benefits
 
@@ -86,16 +207,16 @@ class RequestQueue:
 ### Option 1: Multiple Model Instances (Memory Hungry)
 
 ```python
-# Bad approach - loads model multiple times
+# Theoretical approach - not implemented
 class MultiInstanceQueue:
     def __init__(self, num_workers=3):
-        # 🔥 This loads 3 copies of the model!
+        # This would load 3 copies of the model
         self.models = [load_gpt2_model() for _ in range(num_workers)]
         self.workers = [Worker(model) for model in self.models]
 
 # Memory usage: 3x model size (~1.5GB for GPT-2)
 # GPU memory: Often causes OOM errors
-# Efficiency: Terrible - most of the time models are idle
+# Efficiency: Poor - models idle most of the time
 ```
 
 **Problems**:
@@ -107,7 +228,7 @@ class MultiInstanceQueue:
 ### Option 2: Shared Model with Threading (Better, but...)
 
 ```python
-# Better approach - shared model
+# Theoretical approach - not implemented
 class ThreadedQueue:
     def __init__(self):
         self.model = load_gpt2_model()  # Single model
@@ -120,7 +241,7 @@ class ThreadedQueue:
                 return self.model(request.tokens)
 ```
 
-**This works** and you'd see "Processing: 3", but has limitations:
+**This could work** and you'd see "Processing: 3", but has limitations:
 
 - **Limited Speedup**: Model inference is often the bottleneck, not I/O
 - **Memory Pressure**: Multiple forward passes increase peak memory
@@ -129,225 +250,256 @@ class ThreadedQueue:
 
 ### Why Sequential is Smart for Part 6
 
-Sequential processing is the **right choice** for Part 6 because:
+Sequential processing is the **right choice** for Part 6 because as we are building step by step, at this stage we get:
 
-1. **Foundation First**: Establishes clean queue semantics before optimization
-2. **Predictable Behavior**: Easy to measure and understand performance
-3. **Memory Efficient**: Single model instance, minimal overhead
-4. **Sets Up Part 7**: Perfect baseline for continuous batching comparison
+1. **Foundation First**: Establishes clean queue semantics before optimization - we need to understand basic queuing before tackling complex batching
+2. **Predictable Behavior**: Easy to measure and understand performance - at this learning stage, we can clearly see how one request processes at a time
+3. **Memory Efficient**: Single model instance, minimal overhead - we master resource management with the simplest possible approach
+4. **Educational Progression**: Perfect baseline for understanding why batching is needed - by seeing the limitations of sequential processing, we motivate the advanced techniques in Parts 7-8
 
-## The Better Solution: Continuous Batching (Parts 7-8)
+## Modular CLI Architecture
 
-Instead of processing `N` requests with `N` model calls (multithreading) or `N` model instances, the optimal approach is **batching**:
+### Command Structure
+
+The CLI demonstrates production-ready code organization:
 
 ```python
-# Part 7 preview - continuous batching
-async def process_batch(self, requests):
-    # Take up to 4 requests from queue
-    batch = requests[:4]
-
-    # Process ALL requests in ONE model call
-    batched_tokens = pad_and_stack([r.tokens for r in batch])
-    batched_output = self.model(batched_tokens)  # 🚀 One call, 4 results
-
-    # Processing count would show: 4
-    # Memory usage: Same as sequential
-    # Throughput: 3-4x improvement
-```
-
-**Benefits over multithreading**:
-- **Same memory usage** as sequential
-- **Much higher throughput** than threading
-- **GPU efficient** - single optimized forward pass
-- **Simpler implementation** than thread management
-
-## Key Metrics and Observations
-
-### Performance Characteristics
-
-**Sequential Processing (Current)**:
-- Queue Size: Variable (0-50+ during stress tests)
-- Processing: Always 1 (or 0)
-- Throughput: ~2-3 requests/second
-- Memory: 1x model size
-
-**What This Teaches Us**:
-- Queue depth indicates load vs. processing capacity
-- Sequential processing creates clear performance boundaries
-- Real-world systems need batching for efficiency
-
-### Stress Test Results
-
-```
-📈 Stress Test Summary:
-Total Requests Sent: 100
-Successful Requests: 100
-Success Rate: 100.0%
-Avg Requests/Second: 2.3
-Total Test Time: 43.2s
-```
-
-These results demonstrate:
-- **Queue system works correctly** under load
-- **Sequential processing** creates throughput ceiling
-- **Motivation for batching** becomes clear from metrics
-
-## Real-Time Monitoring Insights
-
-The monitoring dashboard reveals queue dynamics in real-time:
-
-### Queue Behavior Patterns
-
-**Low Load**:
-- Queue Size: 0-2
-- Processing: 0-1
-- Pattern: Requests processed immediately
-
-**Medium Load**:
-- Queue Size: 5-15
-- Processing: 1 (constant)
-- Pattern: Steady queue draining
-
-**High Load (Stress Test)**:
-- Queue Size: 20-50+
-- Processing: 1 (always)
-- Pattern: Queue builds faster than processing
-
-### Performance Bottlenecks
-
-The monitoring clearly shows:
-1. **Processing capacity** is the bottleneck (always 1)
-2. **Queue accumulation** during load spikes
-3. **Sequential draining** after load reduction
-
-This data **validates the need** for batching optimizations in Parts 7-8.
-
-## Code Architecture and Organization
-
-### Modular Command Structure
-
-The refactored CLI demonstrates production-ready code organization:
-
-```
-cli.py (243 lines) - Main entry point
+# Actual file structure
+cli.py (291 lines) - Main entry point
 commands/
+├── __init__.py - Module exports
 ├── common.py - Shared utilities and server management
 ├── generate.py - Text generation commands
 ├── monitoring.py - Real-time dashboard
 ├── testing.py - Load testing and stress tests
-├── benchmarking.py - Performance testing
-└── __init__.py - Module exports
+└── benchmarking.py - Performance testing
+```
+
+### Main CLI Integration
+
+```python
+# From cli.py - actual command registration
+import typer
+from commands.common import console, create_header
+from commands import generate, benchmarking, monitoring, testing
+
+# Initialize main CLI app
+app = typer.Typer(help="🚀 RuvonVLLM - Tiny vLLM Inference Engine")
+
+# Add command modules
+app.add_typer(generate.app, name="generate", help="🎭 Text generation commands")
+app.add_typer(benchmarking.app, name="benchmark", help="📊 Performance benchmarking")
+app.add_typer(monitoring.app, name="monitor", help="📈 Real-time monitoring")
+app.add_typer(testing.app, name="test", help="🧪 Load testing and stress tests")
 ```
 
 **Benefits**:
-- **90% reduction** in main file size
 - **Logical grouping** of related functionality
 - **Shared utilities** eliminate code duplication
 - **Easy maintenance** and feature development
+- **Clean separation** of concerns
 
 ### Shared Infrastructure
 
-Common utilities provide consistent behavior:
+The common module provides shared functionality:
 
 ```python
-# commands/common.py
-async def start_server_if_needed():
-    """Centralized server management"""
+# From commands/common.py - shared utilities
+from rich.console import Console
+from rich.panel import Panel
 
-def create_header():
-    """Consistent branding across commands"""
+console = Console()
 
-class RequestTracker:
-    """Unified request performance tracking"""
+def create_header(title: str, subtitle: str = "") -> Panel:
+    """Create a consistent header for all commands."""
+    # Implementation details...
+
+def get_server_url() -> str:
+    """Get the configured server URL."""
+    # Implementation details...
 ```
 
-## Production Readiness Features
+## Real-Time Monitoring Implementation
 
-### Error Handling and Recovery
+### Monitoring Dashboard
+
+The monitoring system provides live queue statistics:
 
 ```python
-class RequestQueue:
-    async def process_request(self, request):
-        try:
-            result = await self.model.generate(request.prompt)
-            request.status = "completed"
-            request.result = result
-        except Exception as e:
-            request.status = "failed"
-            request.error = str(e)
-            self.total_failed += 1
+# From commands/monitoring.py - actual monitoring implementation
+@app.command()
+def dashboard():
+    """🎯 Real-time monitoring dashboard for the inference server."""
+
+    server_url = get_server_url()
+    console.print(create_header("Real-Time Monitoring Dashboard"))
+
+    with Live(auto_refresh=False, console=console) as live:
+        while True:
+            try:
+                # Fetch stats from server
+                response = requests.get(f"{server_url}/stats", timeout=2)
+                stats = response.json()
+
+                # Create dashboard layout
+                layout = create_dashboard_layout(stats)
+                live.update(layout, refresh=True)
+
+                time.sleep(1)  # Update every second
+
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                console.print(f"❌ Error: {e}")
+                time.sleep(2)
 ```
 
-### Comprehensive Monitoring
+### Queue Statistics
 
-- **Queue depth tracking** for capacity planning
-- **Processing time metrics** for performance analysis
-- **Success/failure rates** for reliability monitoring
-- **Server health checks** for system status
+The server provides comprehensive statistics:
 
-### Load Testing Capabilities
+```python
+# From sequential_queue.py - actual stats implementation
+@property
+def stats(self) -> Dict[str, Any]:
+    """Get current queue statistics."""
+    with self._lock:
+        return {
+            "queue_size": self._queue.qsize(),
+            "total_requests": len(self._requests),
+            "processing": 1 if self._processing else 0,
+            "total_processed": self._total_processed,
+            "total_failed": self._total_failed,
+            "current_request_id": self._current_request.id if self._current_request else None,
+        }
+```
 
-- **Incremental stress testing** to find breaking points
-- **Rapid-fire testing** to demonstrate queue behavior
-- **Real-time metrics** during load testing
-- **Automated server management** for testing isolation
+## Testing Infrastructure
 
-## Lessons Learned
+### Load Testing Commands
 
-### Why Sequential Processing First
+The system includes built-in stress testing:
 
-1. **Clear Semantics**: Easy to understand and debug
-2. **Predictable Performance**: Establishes baseline metrics
-3. **Memory Efficiency**: Single model instance approach
-4. **Foundation for Optimization**: Clear target for improvement
+```python
+# From commands/testing.py - actual testing implementation
+@app.command()
+def stress():
+    """🚀 Run stress tests against the inference server."""
 
-### Multithreading vs. Batching
+    server_url = get_server_url()
+    console.print(create_header("Stress Testing"))
 
-**Multithreading**:
-- ❌ Complex synchronization
-- ❌ Memory overhead
-- ❌ Limited speedup
-- ❌ GPU inefficiency
+    # Test configuration
+    total_requests = 100
+    concurrent_requests = 10
 
-**Batching (Parts 7-8)**:
-- ✅ Same memory footprint
-- ✅ GPU-optimized processing
-- ✅ Significant throughput gains
-- ✅ Simpler implementation
+    # Execute stress test
+    start_time = time.time()
+    # ... implementation details ...
 
-### Real-Time Monitoring Value
+    # Report results
+    console.print(f"✅ Completed {total_requests} requests")
+    console.print(f"📊 Success rate: {success_rate:.1%}")
+```
 
-The live dashboard provides crucial insights:
-- **Immediate feedback** on system behavior
-- **Visual validation** of queue dynamics
-- **Performance bottleneck identification**
-- **Load testing result visualization**
+## Key Insights and Observations
 
-## Next Steps: Continuous Batching
+### Performance Characteristics
 
-Part 6 establishes the foundation with sequential processing that **intentionally** shows "Processing: 1". This creates the perfect baseline for Parts 7-8, where we'll implement:
+**Sequential Processing Architecture**:
+- Queue Size: Variable (depends on load)
+- Processing: Always 1 (or 0 when idle)
+- Memory: 1x model size (~500MB for GPT-2)
+- Predictable resource usage
 
-**Part 7 - Continuous Batching**:
-- Process multiple requests in single model calls
-- Dynamic batch size optimization
-- Memory-efficient request grouping
+**What This Teaches Us**:
+- Queue depth indicates load vs. processing capacity
+- Sequential processing creates clear performance boundaries
+- Demonstrates the foundation for more advanced optimizations
 
-**Part 8 - Advanced Batching**:
-- Length-based request grouping
-- Adaptive batch sizing
-- Optimal padding strategies
+### Architecture Benefits
 
-The sequential architecture in Part 6 makes the dramatic improvements of batching clearly visible and measurable.
+1. **Simplicity**: Easy to understand and debug
+2. **Reliability**: Predictable resource usage and error handling
+3. **Foundation**: Clean base for advanced optimizations
+4. **Monitoring**: Clear metrics and observable behavior
+
+### Preparation for Advanced Techniques
+
+The sequential architecture provides:
+- **Baseline performance** for comparison
+- **Clean abstractions** for strategy pattern
+- **Monitoring infrastructure** for performance analysis
+- **Foundation** for batching optimizations in Parts 7-8
+
+## Integration with Strategy Pattern
+
+### Strategy Factory
+
+The queue strategies are managed through a factory:
+
+```python
+# From strategies/factory.py - actual factory implementation
+class QueueStrategyFactory:
+    """Factory for creating queue processing strategies."""
+
+    _strategies = {
+        "sequential": SequentialQueueStrategy,
+        "batched": BatchedQueueStrategy,
+        "continuous": ContinuousQueueStrategy,
+    }
+
+    @classmethod
+    def create_strategy(cls, strategy_name: str) -> QueueStrategy:
+        """Create a strategy instance by name."""
+        if strategy_name not in cls._strategies:
+            raise ValueError(f"Unknown strategy: {strategy_name}")
+
+        return cls._strategies[strategy_name]()
+```
+
+### Server Integration
+
+The HTTP server uses the strategy pattern:
+
+```python
+# From server.py - strategy selection
+def get_current_strategy() -> QueueStrategy:
+    """Get the currently configured processing strategy."""
+    strategy_name = os.getenv("QUEUE_STRATEGY", "sequential")
+    return QueueStrategyFactory.create_strategy(strategy_name)
+```
 
 ## Conclusion
 
-Part 6 demonstrates that **sequential processing is not a limitation** - it's a deliberate architectural choice that:
+Part 6's sequential processing implementation successfully demonstrates fundamental queue management with production-ready architecture. The system provides:
 
-- Provides **memory efficiency** and predictable performance
-- Creates a **solid foundation** for advanced optimizations
-- Offers **clear metrics** for measuring improvements
-- Enables **production-ready** monitoring and load testing
+**Core Capabilities**:
+- **FIFO request processing** with comprehensive state management
+- **Real-time monitoring** with live dashboard capabilities
+- **Modular CLI architecture** with organized command structure
+- **Strategy pattern foundation** for advanced optimizations
 
-The "Processing: 1" observation reveals the system working exactly as designed, setting the stage for the batching optimizations that will unlock significantly higher throughput in Parts 7-8 while maintaining the same memory footprint and architectural simplicity.
+**Key Achievements**:
+- **Production-ready code organization** with modular CLI structure
+- **Comprehensive monitoring** and statistics collection
+- **Clean architecture** that supports multiple processing strategies
+- **Foundation for optimization** in subsequent parts
 
-When you see "Processing: 1" in the monitor, you're seeing the beauty of **intentional simplicity** that enables **sophisticated optimizations** to come.
+**Educational Value**:
+- **Clear demonstration** of sequential processing trade-offs
+- **Observable behavior** through real-time monitoring
+- **Baseline performance** for comparing advanced techniques
+- **Production patterns** in code organization and error handling
+
+The implementation strikes an excellent balance between simplicity and sophistication, providing a solid foundation for the advanced batching techniques in Parts 7-8 while demonstrating production-ready software engineering practices.
+
+---
+
+## Navigation
+
+← **Previous**: [Part 5: Sampling Strategies](part5-article.md) | **Next**: [Part 7: Prefill Batching](part7-article.md) →
+
+---
+
+*Next up: Part 7 - Prefill Batching, where we build upon this sequential foundation to implement static batch processing with significant throughput improvements.*

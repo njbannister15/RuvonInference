@@ -13,20 +13,23 @@ Entropy, introduced by Claude Shannon in 1948, measures the **amount of uncertai
 The entropy of a discrete probability distribution is:
 
 ```
-H(X) = -Σ p(x_i) * log₂(p(x_i))
+H(X) = -Σ p(x_i) * log(p(x_i))
 ```
 
 Where:
-- `H(X)` is the entropy in bits
+- `H(X)` is the entropy in natural units (nats)
 - `p(x_i)` is the probability of outcome `i`
+- `log` is the natural logarithm (as used in our PyTorch implementation)
 - The sum is over all possible outcomes
+
+Note: Our implementation uses natural logarithm (`torch.log`) rather than base-2, so entropy is measured in nats rather than bits.
 
 ### Intuitive Understanding
 
 Think of entropy as measuring the "flatness" of a probability distribution:
 
-- **Low entropy (0-2 bits)**: Spiky distribution, one outcome much more likely
-- **High entropy (many bits)**: Flat distribution, many outcomes equally likely
+- **Low entropy (0-2 nats)**: Spiky distribution, one outcome much more likely
+- **High entropy (many nats)**: Flat distribution, many outcomes equally likely
 
 ## Entropy in Language Model Context
 
@@ -39,10 +42,9 @@ After "United States of":
 "America's": 0.10 probability
 "the": 0.03 probability
 Other tokens: 0.02 probability
-Entropy: ~0.74 bits
 ```
 
-The model is very confident - low entropy means low surprise.
+The model is very confident - low entropy means low surprise, with one token dominating the distribution.
 
 ### High Uncertainty Context (High Entropy)
 After "The":
@@ -52,10 +54,9 @@ After "The":
 "best": 0.06 probability
 "last": 0.05 probability
 ... (hundreds of other tokens with similar small probabilities)
-Entropy: ~8.2 bits
 ```
 
-The model is uncertain - high entropy means high surprise.
+The model is uncertain - high entropy means high surprise, with probability spread across many tokens.
 
 ## How Sampling Strategies Manipulate Entropy
 
@@ -63,170 +64,121 @@ Our Part 5 sampling strategies are essentially **entropy engineering tools**. Ea
 
 ### Temperature: Direct Entropy Control
 
-Temperature directly manipulates the entropy by reshaping the probability distribution:
+Temperature directly manipulates the entropy by reshaping the probability distribution through our `apply_temperature()` function:
 
 ```python
-def temperature_effect_on_entropy():
-    import torch
-    import torch.nn.functional as F
-
-    # Original logits
-    logits = torch.tensor([3.0, 2.0, 1.0, 0.5])
-    original_probs = F.softmax(logits, dim=0)
-    original_entropy = -torch.sum(original_probs * torch.log2(original_probs + 1e-10))
-
-    print(f"Original: {original_probs.tolist()}")
-    print(f"Original entropy: {original_entropy:.3f} bits")
-
-    # Low temperature (more focused)
-    low_temp_logits = logits / 0.5
-    low_temp_probs = F.softmax(low_temp_logits, dim=0)
-    low_temp_entropy = -torch.sum(low_temp_probs * torch.log2(low_temp_probs + 1e-10))
-
-    print(f"Low temp (0.5): {low_temp_probs.tolist()}")
-    print(f"Low temp entropy: {low_temp_entropy:.3f} bits")
-
-    # High temperature (more random)
-    high_temp_logits = logits / 2.0
-    high_temp_probs = F.softmax(high_temp_logits, dim=0)
-    high_temp_entropy = -torch.sum(high_temp_probs * torch.log2(high_temp_probs + 1e-10))
-
-    print(f"High temp (2.0): {high_temp_probs.tolist()}")
-    print(f"High temp entropy: {high_temp_entropy:.3f} bits")
-
-# Output:
-# Original: [0.665, 0.245, 0.090, 0.067]
-# Original entropy: 1.426 bits
-# Low temp (0.5): [0.842, 0.114, 0.023, 0.021]
-# Low temp entropy: 0.812 bits (reduced uncertainty)
-# High temp (2.0): [0.475, 0.288, 0.174, 0.142]
-# High temp entropy: 1.834 bits (increased uncertainty)
+def apply_temperature(logits: torch.Tensor, temperature: float) -> torch.Tensor:
+    """Apply temperature scaling to logits."""
+    if temperature <= 0:
+        raise ValueError("Temperature must be positive")
+    return logits / temperature
 ```
 
-**Key insight**: Temperature is a direct entropy control knob!
+The mathematical effect:
+- **Low temperature (< 1.0)**: Sharpens distribution → **reduces entropy** → more focused choices
+- **High temperature (> 1.0)**: Flattens distribution → **increases entropy** → more random choices
+- **Temperature = 1.0**: No change to the original distribution
+
+Our `get_sampling_info()` function tracks these entropy changes in real-time, measuring both original and final entropy to quantify the creativity-coherence tradeoff.
+
+**Key insight**: Temperature is a direct entropy control knob that lets us tune randomness!
 
 ### Top-k: Entropy Reduction via Vocabulary Trimming
 
-Top-k sampling reduces entropy by removing low-probability options:
+Top-k sampling reduces entropy by removing low-probability options through our `apply_top_k()` function:
 
 ```python
-def topk_entropy_analysis():
-    # Simulate GPT-2's 50,257 token vocabulary
-    # Most tokens have very low probability
-    import numpy as np
+def apply_top_k(logits: torch.Tensor, k: int) -> torch.Tensor:
+    """Apply top-k filtering to logits."""
+    if k >= logits.size(-1):
+        return logits  # No filtering needed
 
-    # Create a realistic distribution: few high-prob tokens, many low-prob
-    probs = np.concatenate([
-        [0.1, 0.08, 0.06, 0.05, 0.04],  # Top 5 tokens
-        np.linspace(0.03, 0.001, 45),   # Next 45 tokens
-        np.full(50207, 0.0001)          # Remaining 50,207 tokens
-    ])
-    probs = probs / probs.sum()  # Normalize
+    # Get the k-th largest logit value (threshold)
+    top_k_logits, _ = torch.topk(logits, k)
+    min_top_k = top_k_logits[..., -1, None]  # k-th largest value
 
-    # Original entropy
-    original_entropy = -np.sum(probs * np.log2(probs + 1e-10))
-    print(f"Full vocab entropy: {original_entropy:.3f} bits")
-
-    # Top-k=50 entropy
-    top50_probs = probs[:50] / probs[:50].sum()
-    top50_entropy = -np.sum(top50_probs * np.log2(top50_probs + 1e-10))
-    print(f"Top-50 entropy: {top50_entropy:.3f} bits")
-
-    # Top-k=10 entropy
-    top10_probs = probs[:10] / probs[:10].sum()
-    top10_entropy = -np.sum(top10_probs * np.log2(top10_probs + 1e-10))
-    print(f"Top-10 entropy: {top10_entropy:.3f} bits")
-
-# Typical output:
-# Full vocab entropy: 9.234 bits
-# Top-50 entropy: 4.127 bits
-# Top-10 entropy: 2.954 bits
+    # Set all logits below threshold to -inf
+    return torch.where(logits < min_top_k, torch.tensor(float("-inf")), logits)
 ```
 
-Top-k provides **logarithmic entropy reduction** - cutting vocabulary exponentially reduces uncertainty.
+The entropy effect:
+- **Large k**: Keeps more tokens → higher entropy → more creativity
+- **Small k**: Keeps fewer tokens → lower entropy → more focus
+- Setting non-top-k tokens to `-inf` effectively removes them from the probability distribution
+
+Top-k provides **direct vocabulary control** - by setting a hard limit on the number of tokens that can be selected, we drastically reduce the space of possible outcomes and thus the entropy.
 
 ### Top-p: Adaptive Entropy Control
 
-Top-p (nucleus sampling) dynamically adjusts vocabulary size based on the distribution's natural entropy:
+Top-p (nucleus sampling) dynamically adjusts vocabulary size based on the distribution's natural entropy through our `apply_top_p()` function:
 
 ```python
-def nucleus_adaptive_behavior():
-    import torch
-    import torch.nn.functional as F
+def apply_top_p(logits: torch.Tensor, p: float) -> torch.Tensor:
+    """Apply nucleus (top-p) sampling to logits."""
+    # Convert to probabilities and sort
+    probs = F.softmax(logits, dim=-1)
+    sorted_probs, sorted_indices = torch.sort(probs, descending=True)
 
-    # Scenario 1: Model is very confident (low original entropy)
-    confident_logits = torch.tensor([5.0, 1.0, 0.5, 0.2, 0.1])
-    confident_probs = F.softmax(confident_logits, dim=0)
+    # Calculate cumulative probabilities
+    cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
 
-    # Scenario 2: Model is uncertain (high original entropy)
-    uncertain_logits = torch.tensor([1.2, 1.1, 1.0, 0.9, 0.8])
-    uncertain_probs = F.softmax(uncertain_logits, dim=0)
+    # Find where cumulative probability exceeds p
+    sorted_indices_to_remove = cumulative_probs > p
+    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+    sorted_indices_to_remove[..., 0] = False  # Always keep the most likely token
 
-    def apply_nucleus(probs, p=0.9):
-        sorted_probs, indices = torch.sort(probs, descending=True)
-        cumsum = torch.cumsum(sorted_probs, dim=0)
-        cutoff = torch.sum(cumsum <= p).item() + 1
-        return cutoff, sorted_probs[:cutoff]
+    # Create mask for original token order
+    indices_to_remove = sorted_indices_to_remove.scatter(0, sorted_indices, sorted_indices_to_remove)
 
-    conf_cutoff, conf_nucleus = apply_nucleus(confident_probs, 0.9)
-    uncer_cutoff, uncer_nucleus = apply_nucleus(uncertain_probs, 0.9)
-
-    print(f"Confident model: top-p=0.9 keeps {conf_cutoff} tokens")
-    print(f"Uncertain model: top-p=0.9 keeps {uncer_cutoff} tokens")
-
-# Output:
-# Confident model: top-p=0.9 keeps 2 tokens (model sure, vocabulary small)
-# Uncertain model: top-p=0.9 keeps 4 tokens (model unsure, vocabulary larger)
+    # Set filtered tokens to -inf
+    filtered_logits = logits.clone()
+    filtered_logits[indices_to_remove] = float("-inf")
+    return filtered_logits
 ```
 
-This **adaptive behavior** is nucleus sampling's superpower - it automatically adjusts to the model's confidence level.
+The adaptive behavior:
+- **High-confidence contexts**: Fewer tokens needed to reach cumulative probability p → smaller vocabulary
+- **Low-confidence contexts**: More tokens needed to reach cumulative probability p → larger vocabulary
+
+This **adaptive behavior** is nucleus sampling's superpower - it automatically adjusts to the model's confidence level without requiring manual tuning.
 
 ## Entropy as a Quality Metric
 
 In our `get_sampling_info()` function, entropy changes tell us about generation quality:
 
-### Optimal Entropy Ranges
+### What Our get_sampling_info() Function Provides
 
-Based on empirical observation and information theory:
+Our actual implementation tracks entropy changes through these metrics:
 
 ```python
-def interpret_entropy_change(original_entropy, final_entropy):
-    change = final_entropy - original_entropy
-
-    if final_entropy < 1.0:
-        return "Very focused - risk of repetition"
-    elif final_entropy < 2.5:
-        return "Well-focused - good coherence"
-    elif final_entropy < 4.0:
-        return "Balanced - creative but controlled"
-    elif final_entropy < 6.0:
-        return "Creative - some coherence risk"
-    else:
-        return "Very creative - high coherence risk"
+return {
+    "original_entropy": original_entropy.item(),
+    "final_entropy": final_entropy.item(),
+    "entropy_change": final_entropy.item() - original_entropy.item(),
+    "effective_vocab_size": effective_vocab_size,
+    "original_vocab_size": logits.size(-1),
+    "top_token_prob": torch.max(final_probs).item(),
+    "temperature": temperature,
+    "top_k": top_k,
+    "top_p": top_p,
+}
 ```
 
-### Real Examples from Our CLI
+### Interpreting Entropy Changes
 
-When running `python cli.py sample --show-steps`, the entropy metrics reveal:
+The entropy metrics help us understand:
+1. **Original entropy**: How uncertain the model was before filtering
+2. **Final entropy**: How uncertain the model is after applying our sampling strategy
+3. **Entropy change**: How much uncertainty we added (positive) or removed (negative)
+4. **Effective vocab size**: How many tokens have meaningful probability after filtering
 
-```
-Step 1: Generated token 42 -> ' bright'
-  Original entropy: 6.823 bits
-  Final entropy: 4.482 bits
-  Entropy change: -2.341 bits
-  Interpretation: "Balanced - creative but controlled"
-```
-
-This tells us:
-1. **Original entropy 6.823**: Model was quite uncertain (many reasonable options)
-2. **Final entropy 4.482**: After filtering, still creative but more focused
-3. **Change -2.341**: We reduced uncertainty by ~2.3 bits of information
+This provides quantitative insight into the creativity-coherence tradeoff.
 
 ## The Information Theory Connection
 
 ### Relationship to Compression
 
-Entropy directly relates to data compression. If a token has entropy H bits, you need approximately H bits to encode it optimally. Our sampling strategies are essentially asking:
+Entropy directly relates to data compression. If a token has entropy H nats, you need approximately H nats to encode it optimally. Our sampling strategies are essentially asking:
 
 - "How much information should the next token contain?"
 - "Should we pick high-information (surprising) or low-information (predictable) tokens?"
@@ -246,28 +198,10 @@ Our sampling strategies operate in the inference phase to balance:
 Understanding entropy helps optimize real-world LLM serving:
 
 ### 1. Adaptive Sampling
-```python
-def adaptive_temperature(entropy):
-    """Adjust temperature based on model confidence."""
-    if entropy < 2.0:    # Model very confident
-        return 1.2       # Add some creativity
-    elif entropy > 5.0:  # Model very uncertain
-        return 0.7       # Add some focus
-    else:
-        return 1.0       # Balanced
-```
+With our `get_sampling_info()` function, you could theoretically implement adaptive temperature based on the original entropy - increasing temperature when the model is overly confident, decreasing it when the model is too uncertain.
 
 ### 2. Quality Monitoring
-```python
-def quality_alert(entropy_change):
-    """Alert if generation quality seems problematic."""
-    if entropy_change < -4.0:
-        return "WARNING: Very low entropy - repetition risk"
-    elif entropy_change > 2.0:
-        return "WARNING: High entropy - coherence risk"
-    else:
-        return "OK"
-```
+The entropy change metric from our function could serve as a quality indicator - very negative changes might signal repetition risk, while very positive changes might indicate coherence issues.
 
 ### 3. Cost Optimization
 Higher entropy generally requires more compute (more tokens to consider), so entropy tracking helps optimize:
@@ -275,36 +209,18 @@ Higher entropy generally requires more compute (more tokens to consider), so ent
 - **Caching**: Cache high-entropy computations
 - **Model routing**: Use smaller models for low-entropy contexts
 
-## Experimental Validation
+## Using Entropy in Practice
 
-We can empirically validate our entropy theory:
+With our `get_sampling_info()` function, you can empirically study entropy effects:
 
-```python
-def validate_entropy_quality_correlation():
-    """Test if entropy ranges correlate with subjective quality."""
+1. **Compare strategies**: Run our `compare` CLI command and examine how different sampling parameters affect entropy
+2. **Monitor generation**: Use `--show-steps` to see real-time entropy changes during generation
+3. **Optimize parameters**: Adjust temperature, top-k, and top-p based on observed entropy patterns
 
-    prompts = ["The cat sat on", "In a world where", "The future of AI"]
-    temperatures = [0.3, 0.7, 1.0, 1.5, 2.0]
-
-    for prompt in prompts:
-        for temp in temperatures:
-            # Generate multiple samples
-            samples = [generate_with_temp(prompt, temp) for _ in range(10)]
-            entropies = [calculate_entropy(sample) for sample in samples]
-
-            # Human evaluation of quality (subjective)
-            quality_scores = human_evaluate(samples)
-
-            # Find correlation
-            correlation = correlation_coefficient(entropies, quality_scores)
-            print(f"Prompt: {prompt}, Temp: {temp}")
-            print(f"Entropy-Quality correlation: {correlation:.3f}")
-```
-
-Typically, we find:
-- **Low entropy (< 1.5 bits)**: High coherence, low creativity
-- **Medium entropy (1.5-4.0 bits)**: Optimal balance - highest quality scores
-- **High entropy (> 5.0 bits)**: High creativity, lower coherence
+The general pattern observed in language generation:
+- **Low entropy**: High coherence, low creativity (risk of repetition)
+- **Medium entropy**: Optimal balance for most applications
+- **High entropy**: High creativity, lower coherence (risk of nonsense)
 
 ## Conclusion: Entropy as the Master Control
 
@@ -316,7 +232,13 @@ Entropy reveals itself as the **fundamental quantity** underlying all our sampli
 
 By understanding and measuring entropy, we transform text generation from art to science. Our Part 5 implementation doesn't just generate creative text - it provides quantitative insight into the creativity-coherence tradeoff that governs all natural language generation.
 
-This theoretical foundation will prove invaluable as we scale up in subsequent Parts, providing the mathematical tools to optimize, debug, and improve our tiny vLLM engine's output quality.
+This theoretical foundation will prove invaluable as we scale up in subsequent Parts, providing the mathematical tools to optimize, debug, and improve our educational inference engine's output quality.
+
+---
+
+## Navigation
+
+← **Back to**: [Part 5: Sampling Strategies](part5-article.md) | **Next**: [Part 6: Sequential Request Handling](part6-article.md) →
 
 ---
 

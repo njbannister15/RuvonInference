@@ -2,7 +2,7 @@
 
 *Building the heart of a modern inference engine: KV-cache optimization*
 
-Part 3 brought our tiny vLLM engine its first major performance improvement. By implementing KV-caching, we transformed generation from painfully slow to lightning fast - achieving **5.1x speedup** with just 10 tokens, and the promise of 10-20x improvements for longer sequences.
+Part 3 brought our educational inference engine its first major performance improvement. By implementing KV-caching, we transformed generation from painfully slow to lightning fast - delivering significant speedup that grows with sequence length.
 
 ## The Problem: Redundant Computation
 
@@ -15,7 +15,7 @@ Step 3: Process [7454, 2402, 257, 640, 11, 262] → recompute attention for all 
 ...
 ```
 
-For a 20-token generation, we'd process `4+5+6+...+24 = 280 token positions` instead of the optimal `4+1+1+...+1 = 24`. That's **11.7x more computation** than necessary!
+For a 20-token generation, we'd process `4+5+6+...+24 = 280 token positions` instead of the optimal `4+1+1+...+1 = 24`. That's **dramatically more computation** than necessary!
 
 ## The Solution: KV-Cache
 
@@ -56,17 +56,15 @@ This transforms generation complexity from **O(n²)** to **O(n)**:
 - **With cache**: Each step processes only new token
 - **Result**: Dramatic speedup that grows with sequence length
 
-## The Benchmark Results
+## The Performance Impact
 
-Our performance test revealed the dramatic improvement:
+Our KV-cache optimization delivers dramatic improvements:
 
-| Metric | Without KV-Cache | With KV-Cache | Improvement |
-|--------|------------------|---------------|-------------|
-| Total Time | 1.719s | 0.335s | **5.1x faster** |
-| Time per Token | 0.172s | 0.033s | **5.1x faster** |
-| Efficiency | 100% | 19.5% | **80.5% less time** |
+- **Without cache**: Each step recomputes attention for all previous tokens
+- **With cache**: Each step only computes attention for the new token
+- **Result**: Significant speedup that increases with sequence length
 
-And this is with just **10 tokens**! The speedup grows quadratically with sequence length.
+The longer the sequence, the greater the benefit - this is why KV-caching is essential for production LLM serving.
 
 ## Beautiful Benchmarking CLI
 
@@ -93,7 +91,7 @@ The CLI provides:
 
 KV-caching isn't just an optimization - it's **essential for production inference**:
 
-1. **Latency**: Reduces response time by 5-20x
+1. **Latency**: Dramatically reduces response time
 2. **Throughput**: Servers can handle more concurrent requests
 3. **Cost**: Lower compute costs per generation
 4. **User Experience**: Real-time interactive generation becomes possible
@@ -104,10 +102,10 @@ KV-caching isn't just an optimization - it's **essential for production inferenc
 ### Memory vs Speed Trade-off
 - **Memory increase**: Cache grows with sequence length
 - **Speed increase**: Computation decreases dramatically
-- **Sweet spot**: For sequences >20 tokens, the trade-off is always worth it
+- **Sweet spot**: For longer sequences, the trade-off is almost always worth it
 
 ### When Cache Helps Most
-- **Long generations**: 100+ tokens see 10-20x speedup
+- **Long generations**: Longer sequences see increasingly large speedups
 - **Interactive chat**: Conversation context builds up
 - **Code completion**: Large file contexts benefit enormously
 
@@ -130,18 +128,26 @@ The combination of KV-cache optimization + HTTP API will create a genuinely usab
 
 ## Key Takeaways
 
-1. **Optimization matters**: Simple caching delivers 5-20x speedup
+1. **Optimization matters**: Simple caching delivers dramatic speedup
 2. **Understand your bottlenecks**: Redundant computation kills performance
 3. **Memory-speed trade-offs**: Usually worth it for inference workloads
 4. **Benchmark everything**: Measure improvements quantitatively
 5. **Cache invalidation is hard**: But cache creation can be simple and powerful
 
-From 1.7 seconds to 0.3 seconds for 10 tokens. From concept to production-ready optimization in one Part. The heart of our inference engine is now beating fast.
+From concept to production-ready optimization in one Part. The heart of our inference engine is now beating fast.
 
 ---
 
-*This is part of a 20-Part series building a tiny vLLM inference engine from scratch. Follow along as we add HTTP APIs, continuous batching, FlashAttention, and more.*
+## Navigation
+
+← **Previous**: [Part 2: Memory Optimization](part2-article.md) | **Next**: [Part 4: HTTP API Server](part4-article.md) →
+
+**Advanced**: [Deep Dive into Attention Mechanisms](part3-advanced-attention.md)
+
+---
+
+*This is part of a 20-Part series building an educational inference engine from scratch. Follow along as we add HTTP APIs, continuous batching, FlashAttention, and more.*
 
 ## The Speed of Progress
 
-Part 3 proved that smart engineering can transform performance overnight. Our tiny inference engine went from academic demo to genuinely fast. Tomorrow, we make it accessible to the world.
+Part 3 proved that smart engineering can transform performance overnight. Our educational inference engine went from academic demo to genuinely fast. Tomorrow, we make it accessible to the world.

@@ -118,4 +118,10 @@ This optimization will:
 
 ---
 
-*This is part of a 20-Part series building a tiny vLLM inference engine from scratch. Follow along as we add KV-caching, HTTP APIs, continuous batching, and more.*
+## Navigation
+
+← **Previous**: [Part 1: Basic Text Generation](part1-article.md) | **Next**: [Part 3: KV-Cache Optimization](part3-article.md) →
+
+---
+
+*This is part of a 20-Part series building an educational inference engine from scratch. Follow along as we add KV-caching, HTTP APIs, continuous batching, and more.*

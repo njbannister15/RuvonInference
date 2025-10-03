@@ -4,7 +4,7 @@
 
 ## Overview
 
-In Part 7 of our 20-part vLLM series, we implement **prefill batching** - an optimization that allows LLM inference engines to process multiple requests simultaneously in static batches. This builds upon Part 6's sequential processing by collecting requests into batches and processing them together, achieving throughput improvements through parallel computation.
+In Part 7 of our 20-part inference engine series, we implement **prefill batching** - an optimization that allows LLM inference engines to process multiple requests simultaneously in static batches. This builds upon Part 6's sequential processing by collecting requests into batches and processing them together, achieving throughput improvements through parallel computation.
 
 ## What is Prefill Batching?
 
@@ -495,5 +495,13 @@ Key achievements:
 - **Foundation for advanced batching** techniques in Part 8
 
 The implementation strikes an excellent balance between educational clarity and production sophistication, providing real optimizations while remaining understandable.
+
+---
+
+## Navigation
+
+← **Previous**: [Part 6: Sequential Request Handling](part6-article.md) | **Next**: [Part 8: Continuous Batching](part8-article.md) →
+
+---
 
 *Next up: Part 8 - Continuous Batching, where we remove the static batch limitations and allow truly dynamic request management during generation.*

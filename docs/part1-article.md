@@ -2,7 +2,7 @@
 
 *Building the foundation: from text to tokens to predictions*
 
-ToPart marked the beginning of my 20-part journey to build a tiny vLLM inference engine from scratch. The goal for Part 1 was to load GPT-2 124M weights, tokenize a string, run it through the model, and decode the predictions back to text.
+Part 1 marked the beginning of my 20-part journey to build an educational inference engine from scratch, demonstrating concepts inspired by systems like vLLM. The goal for Part 1 was to load GPT-2 124M weights, tokenize a string, run it through the model, and decode the predictions back to text.
 
 ## What We Built
 
@@ -63,4 +63,10 @@ Tomorrow, we'll implement the greedy decode loop - turning our single forward pa
 
 ---
 
-*This is part of a 20-Part series building a tiny vLLM inference engine from scratch. Follow along as we add features like KV-caching, continuous batching, FlashAttention, and more.*
+## Navigation
+
+← **Previous**: [Introduction](introduction.md) | **Next**: [Part 2: Memory Optimization](part2-article.md) →
+
+---
+
+*This is part of a 20-Part series building an educational inference engine from scratch. Follow along as we add features like KV-caching, continuous batching, FlashAttention, and more.*

@@ -2,7 +2,7 @@
 
 *Top-k, top-p, and temperature explained simply: From deterministic to delightfully unpredictable*
 
-Part 5 marked the transformation of our tiny vLLM from a predictable machine into a creative AI companion. By implementing advanced sampling strategies, we unlocked the model's ability to generate diverse, interesting text while maintaining coherence. The difference is striking: where greedy decoding always chose the safest path, our new sampling methods let the model take creative risks.
+Part 5 marked the transformation of our educational inference engine from a predictable machine into a creative AI companion. By implementing advanced sampling strategies, we unlocked the model's ability to generate diverse, interesting text while maintaining coherence. The difference is striking: where greedy decoding always chose the safest path, our new sampling methods let the model take creative risks.
 
 ## The Predictability Problem
 
@@ -72,17 +72,20 @@ Our "nucleus" strategy combines all three: `temperature=0.8, top_k=40, top_p=0.9
 
 ## Seeing Creativity in Action
 
-The results speak for themselves. Same prompt, different strategies:
+Our implementation includes a powerful comparison feature that demonstrates how different strategies affect output variety. The CLI's `compare` command tests nine different sampling strategies on the same prompt:
 
-**Prompt: "In a world where"**
+**Actual strategies implemented:**
+- **greedy**: temperature=0.1 (almost deterministic)
+- **low_temp**: temperature=0.7 (focused)
+- **medium_temp**: temperature=1.0 (balanced)
+- **high_temp**: temperature=1.5 (creative)
+- **top_k_20**: temperature=0.8, top_k=20 (conservative variety)
+- **top_k_50**: temperature=0.8, top_k=50 (moderate variety)
+- **top_p_90**: temperature=0.8, top_p=0.9 (nucleus 90%)
+- **top_p_95**: temperature=0.8, top_p=0.95 (nucleus 95%)
+- **nucleus**: temperature=0.8, top_k=40, top_p=0.9 (combined approach)
 
-- **Greedy**: "the internet is the most popular form of communication"
-- **Low temp**: "known media is becoming expertised, a"
-- **High temp**: "murder victimized less than 250 sleeper agents every severe domestic"
-- **Top-k=20**: "everything is digital, the Internet is the future of"
-- **Nucleus**: "the government is increasingly concerned about privacy, why would"
-
-Notice how each strategy produces coherent but distinctly different continuations. High temperature gets wild, top-k stays focused, nucleus finds a middle ground.
+Each strategy produces distinctly different outputs when run with the same prompt, demonstrating the creative potential of controlled randomness.
 
 ## The Technical Implementation
 
@@ -149,20 +152,18 @@ Part 5's sampling strategies transform our project from a **technical demo** to 
 
 ## The Information Theory Connection
 
-Behind the scenes, we're doing **entropy engineering** - controlling the uncertainty in our probability distributions. Our `get_sampling_info()` function tracks how each strategy affects the model's confidence:
+Behind the scenes, we're doing **entropy engineering** - controlling the uncertainty in our probability distributions. Our `get_sampling_info()` function tracks how each strategy affects the model's confidence by measuring:
 
-```
-Step 1: Generated token 42 -> ' bright'
-  Top token prob: 0.156
-  Effective vocab: 234
-  Entropy change: -2.341
-```
+- **Original entropy**: The uncertainty in the raw model distribution
+- **Final entropy**: The uncertainty after filtering and temperature scaling
+- **Effective vocabulary size**: Number of tokens with meaningful probability
+- **Top token probability**: Confidence in the most likely choice
 
-This tells us we reduced uncertainty by 2.3 bits while keeping 234 possible tokens in play - the perfect balance of focus and creativity.
+This provides quantitative insight into the creativity-coherence tradeoff that governs text generation.
 
 ## Looking Forward
 
-With sampling strategies in place, our tiny vLLM can now:
+With sampling strategies in place, our educational inference engine can now:
 - Generate diverse, engaging content
 - Adapt creativity to context
 - Serve multiple users with varied outputs
@@ -171,6 +172,14 @@ With sampling strategies in place, our tiny vLLM can now:
 Part 5 proves that **sophisticated AI doesn't require massive scale** - with the right algorithms, even a 124M parameter model can produce surprisingly creative and useful text.
 
 Next up: Part 6 will tackle multiple sequential requests, building toward the multi-user serving capabilities that make our engine truly production-ready.
+
+---
+
+## Navigation
+
+← **Previous**: [Part 4: HTTP API Server](part4-article.md) | **Next**: [Part 6: Sequential Request Handling](part6-article.md) →
+
+**Advanced**: [Information Theory and Entropy](part5-advanced-entropy.md)
 
 ---
 

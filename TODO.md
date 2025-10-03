@@ -1,13 +1,13 @@
 # Project RUVON VLLM
 
-We are building a tiny vLLM-style inference engine from scratch — a miniature but real system that can load pretrained transformer models (starting with GPT-2 124M → scaling to GPT-2 XL 1.5B), tokenize user prompts, run efficient prefill and incremental decode passes, and serve generations over an HTTP API with streaming, batching, and telemetry. The core focus is not training new models, but serving existing ones efficiently: implementing a paged KV-cache allocator for memory reuse, a continuous batching scheduler so new requests can join mid-flight, and a Triton-based fused decode kernel for speed.
+We are building an educational inference engine from scratch — a miniature but real system that can load pretrained transformer models (starting with GPT-2 124M → scaling to GPT-2 XL 1.5B), tokenize user prompts, run efficient prefill and incremental decode passes, and serve generations over an HTTP API with streaming, batching, and telemetry. The core focus is not training new models, but serving existing ones efficiently: implementing a paged KV-cache allocator for memory reuse, a continuous batching scheduler so new requests can join mid-flight, and a Triton-based fused decode kernel for speed.
 
 Around this runtime we’ll build a FastAPI service layer with OpenAI-like endpoints, sampling strategies (greedy, top-k, nucleus, temperature), speculative decoding for acceleration, and lightweight quantization so larger models can fit into limited GPU memory.
 
 Each part we’ll cut a vertical slice — from tokenizer → kernel → scheduler → streaming client → cost telemetry — and publish a demo plus a short article explaining the “what, why, and how.” By Part 20, the engine will be able to serve GPT-2 XL interactively with multi-user batching, real-time metrics, and cost dashboards: a functioning, investor-ready showcase of how to build an inference-optimized LLM runtime in just four weeks.
 
 
-# 🚀 20-Part Tiny vLLM Plan
+# 🚀 20-Part Educational Inference Engine Plan
 
 ## Phase 1 — Build a Vertical Slice
 
@@ -164,6 +164,6 @@ Each part we’ll cut a vertical slice — from tokenizer → kernel → schedul
 **Part 20 — Full Showcase**
 
 * **What:** Run GPT-2 XL (1.5B) with batching, streaming, telemetry, speculative decoding.
-* **Why:** Prove tiny vLLM can handle real models.
+* **Why:** Prove educational inference engine can handle real models.
 * **Demo:** Live interactive chat with GPT-2 XL in your engine.
-* **Article:** *“From zero to inference engine in 20 parts: my journey building a tiny vLLM.”*
+* **Article:** *"From zero to inference engine in 20 parts: my journey building an educational inference engine."*

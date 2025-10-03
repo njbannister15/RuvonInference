@@ -1,6 +1,6 @@
 """
 RuvonVLLM API module.
 
-This module provides HTTP API endpoints for the tiny vLLM inference engine,
+This module provides HTTP API endpoints for the educational inference engine,
 starting with Part 4's /completions endpoint with streaming support.
 """

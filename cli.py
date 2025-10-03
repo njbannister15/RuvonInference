@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RuvonVLLM CLI - A beautiful command-line interface for our tiny vLLM inference engine.
+RuvonVLLM CLI - A beautiful command-line interface for our educational inference engine.
 
 This CLI provides an interactive and visually appealing way to demonstrate our
 inference engine capabilities, starting with Part 1's tokenizer and forward pass demo.
