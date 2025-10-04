@@ -10,8 +10,8 @@ import torch
 from transformers import DynamicCache, GPT2LMHeadModel, GPT2Config
 from typing import Dict, Any, Optional, List
 
-from ruvonvllm.sampling.strategies import sample_token, get_sampling_info
-from ruvonvllm.generation.batch_generator import BatchGenerator
+from ruvoninference.sampling.strategies import sample_token, get_sampling_info
+from ruvoninference.generation.batch_generator import BatchGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ class GPT2Model:
 
             if show_progress:
                 # Decode the new token to show what was generated
-                from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+                from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 
                 tokenizer = GPT2TokenizerWrapper(self.model_name)
                 token_text = tokenizer.decode([next_token_id])
@@ -297,7 +297,7 @@ class GPT2Model:
 
             if show_progress:
                 # Decode the new token to show what was generated
-                from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+                from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 
                 tokenizer = GPT2TokenizerWrapper(self.model_name)
                 token_text = tokenizer.decode([next_token_id])
@@ -514,7 +514,7 @@ class GPT2Model:
                     next_token_logits, temperature, top_k, top_p
                 )
 
-                from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+                from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 
                 tokenizer = GPT2TokenizerWrapper(self.model_name)
                 token_text = tokenizer.decode([next_token_id])
@@ -566,7 +566,7 @@ class GPT2Model:
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+        from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 
         tokenizer = GPT2TokenizerWrapper(self.model_name)
 

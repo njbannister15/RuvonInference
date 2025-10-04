@@ -1,8 +1,8 @@
 {
 	"info": {
-		"_postman_id": "ruvonvllm-api-tests",
-		"name": "RuvonVLLM API Tests",
-		"description": "Comprehensive test suite for RuvonVLLM API endpoints",
+		"_postman_id": "ruvoninference-api-tests",
+		"name": "RuvonInference API Tests",
+		"description": "Comprehensive test suite for RuvonInference API endpoints",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -25,7 +25,7 @@
 									"    pm.expect(jsonData).to.have.property('message');",
 									"    pm.expect(jsonData).to.have.property('version');",
 									"    pm.expect(jsonData).to.have.property('endpoints');",
-									"    pm.expect(jsonData.message).to.include('RuvonVLLM API');",
+									"    pm.expect(jsonData.message).to.include('RuvonInference API');",
 									"    pm.expect(jsonData.version).to.equal('0.1.0');",
 									"});",
 									"",
@@ -700,7 +700,7 @@
 		{
 			"key": "base_url",
 			"value": "http://127.0.0.1:8000",
-			"description": "Base URL for the RuvonVLLM API server"
+			"description": "Base URL for the RuvonInference API server"
 		}
 	]
 }

@@ -1,5 +1,5 @@
 """
-Benchmarking and performance testing commands for RuvonVLLM.
+Benchmarking and performance testing commands for RuvonInference.
 
 This module provides performance benchmarking capabilities to measure
 and demonstrate the effectiveness of optimizations like KV-cache.
@@ -13,8 +13,8 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from ruvonvllm.model.gpt2 import GPT2Model
-from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+from ruvoninference.model.gpt2 import GPT2Model
+from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 
 from .common import (
     console,

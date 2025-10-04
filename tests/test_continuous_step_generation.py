@@ -10,9 +10,9 @@ import pytest
 import torch
 import time
 
-from ruvonvllm.model.gpt2 import GPT2Model
-from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
-from ruvonvllm.api.continuous_queue import ContinuousRequest, RequestState
+from ruvoninference.model.gpt2 import GPT2Model
+from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+from ruvoninference.api.continuous_queue import ContinuousRequest, RequestState
 
 
 class TestContinuousStepGeneration:

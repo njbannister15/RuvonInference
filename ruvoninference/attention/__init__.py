@@ -1,5 +1,5 @@
 """
-Attention implementation management for RuvonVLLM.
+Attention implementation management for RuvonInference.
 
 This module provides support for different attention implementations including
 standard PyTorch attention, FlashAttention, and SDPA (Scaled Dot-Product Attention).

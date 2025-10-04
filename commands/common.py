@@ -26,11 +26,11 @@ def create_header() -> Panel:
     Create the standard header panel for CLI commands.
 
     Returns:
-        Panel: Rich panel with RuvonVLLM branding and emoji
+        Panel: Rich panel with RuvonInference branding and emoji
     """
     header_text = Text()
     header_text.append("🚀 ", style="bold blue")
-    header_text.append("RuvonVLLM", style="bold white")
+    header_text.append("RuvonInference", style="bold white")
     header_text.append(" - GPT-2 Inference Engine", style="bold cyan")
 
     return Panel(header_text, style="blue", border_style="blue", expand=False)

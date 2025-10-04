@@ -1,6 +1,6 @@
 # Building an Educational Inference Engine: A 20-Part Journey
 
-Welcome to the comprehensive documentation series for **RuvonVLLM** - an educational inference engine built from scratch to demonstrate modern LLM serving techniques inspired by systems like vLLM.
+Welcome to the comprehensive documentation series for **RuvonInference** - an educational inference engine built from scratch to demonstrate modern LLM serving techniques inspired by systems like vLLM.
 
 ## About This Series
 
@@ -62,9 +62,9 @@ Focus on the architectural decisions:
 ## Code Organization
 
 The series follows the actual codebase structure:
-- `ruvonvllm/model/` - Core model and generation logic
-- `ruvonvllm/api/` - HTTP server and queue management
-- `ruvonvllm/sampling/` - Sampling strategies and utilities
+- `ruvoninference/model/` - Core model and generation logic
+- `ruvoninference/api/` - HTTP server and queue management
+- `ruvoninference/sampling/` - Sampling strategies and utilities
 - `commands/` - CLI implementations for each feature
 
 ## Key Principles

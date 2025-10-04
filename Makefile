@@ -12,16 +12,10 @@ lint:
 	ruff check .
 
 test:
-	uv run pytest $(if $(filter-out undefined,$(origin ARGS)),$(ARGS),tests/unit) -v
-
-test-fast:
-	uv run pytest tests/unit -v -m "not slow"
-
-test-all:
-	uv run pytest tests/ -v
+	uv run pytest -v
 
 test-cov:
-	uv run pytest tests/unit -v --cov=ruvonvllm --cov-report=term-missing
+	uv run pytest -v --cov=ruvoninference --cov-report=term-missing
 
 run-cli:
 	uv run python cli.py

@@ -12,7 +12,7 @@ Think of these as "learning labs" rather than traditional unit tests.
 import pytest
 import torch
 
-from ruvonvllm.model.gpt2 import GPT2Model
+from ruvoninference.model.gpt2 import GPT2Model
 
 
 class TestGPT2ModelErrorCases:

@@ -1,7 +1,7 @@
 [project]
-name = "ruvonvllm"
+name = "ruvoninference"
 version = "0.1.0"
-description = "Add your description here"
+description = "Educational inference engine built from scratch for learning LLM serving techniques"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

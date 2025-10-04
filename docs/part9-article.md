@@ -65,7 +65,7 @@ Our Part 9 integration adds a flexible attention implementation system that can 
 Our system can **use** these existing attention implementations:
 
 ```python
-from ruvonvllm.attention import AttentionImplementation
+from ruvoninference.attention import AttentionImplementation
 
 # Available implementations (using existing libraries)
 AttentionImplementation.EAGER           # Standard PyTorch attention (O(n²) memory)
@@ -76,7 +76,7 @@ AttentionImplementation.SDPA            # PyTorch's optimized SDPA (O(n²) but f
 ### Model Loading with Backend Selection
 
 ```python
-from ruvonvllm.attention import load_model_with_attention
+from ruvoninference.attention import load_model_with_attention
 
 # Load with FlashAttention
 model = load_model_with_attention(
@@ -241,7 +241,7 @@ uv run python cli.py generate implementations
 Our system automatically detects available implementations:
 
 ```python
-from ruvonvllm.attention import get_available_implementations
+from ruvoninference.attention import get_available_implementations
 
 available = get_available_implementations()
 print(f"Available implementations: {[b.value for b in available]}")
@@ -259,7 +259,7 @@ python cli.py flash --text "Long prompt here..." --show-memory --max-length 100
 ### Sequence Length Scaling
 
 ```python
-from ruvonvllm.attention.benchmarks import AttentionBenchmark
+from ruvoninference.attention.benchmarks import AttentionBenchmark
 
 benchmark = AttentionBenchmark("gpt2", device="cuda")
 

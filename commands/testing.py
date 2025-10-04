@@ -1,5 +1,5 @@
 """
-Testing and load testing commands for RuvonVLLM.
+Testing and load testing commands for RuvonInference.
 
 This module provides stress testing and rapid testing functionality
 for evaluating the queue system and server performance under load.

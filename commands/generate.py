@@ -1,5 +1,5 @@
 """
-Text generation commands for RuvonVLLM.
+Text generation commands for RuvonInference.
 
 This module provides various text generation capabilities including:
 - Next token prediction
@@ -15,9 +15,9 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from ruvonvllm.model.gpt2 import GPT2Model
-from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
-from ruvonvllm.attention import (
+from ruvoninference.model.gpt2 import GPT2Model
+from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+from ruvoninference.attention import (
     AttentionImplementation,
     load_model_with_attention,
     get_available_implementations,
@@ -882,7 +882,7 @@ def show_implementations():
     console.print()
 
     try:
-        from ruvonvllm.attention import (
+        from ruvoninference.attention import (
             get_available_implementations,
             get_implementation_info,
         )
@@ -921,7 +921,7 @@ def show_implementations():
             console.print()
 
         # Installation help if FlashAttention not available
-        from ruvonvllm.attention import AttentionImplementation
+        from ruvoninference.attention import AttentionImplementation
 
         if AttentionImplementation.FLASH_ATTENTION_2 not in available_implementations:
             console.print("[yellow]💡 To enable FlashAttention:[/yellow]")
@@ -968,11 +968,11 @@ def run_benchmarks(
     console.print()
 
     try:
-        from ruvonvllm.attention.benchmarks import (
+        from ruvoninference.attention.benchmarks import (
             AttentionBenchmark,
             format_benchmark_results,
         )
-        from ruvonvllm.attention import get_available_implementations
+        from ruvoninference.attention import get_available_implementations
 
         # Check available implementations
         available_implementations = get_available_implementations()

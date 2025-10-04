@@ -1177,7 +1177,7 @@ wheels = [
 ]
 
 [[package]]
-name = "ruvonvllm"
+name = "ruvoninference"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

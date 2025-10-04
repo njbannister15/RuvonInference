@@ -1,5 +1,5 @@
 """
-Commands package for RuvonVLLM CLI.
+Commands package for RuvonInference CLI.
 
 This package contains modular command implementations for better organization
 and maintainability of the CLI interface.

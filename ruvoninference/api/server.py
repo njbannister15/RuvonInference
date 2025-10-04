@@ -1,5 +1,5 @@
 """
-FastAPI server for RuvonVLLM inference engine.
+FastAPI server for RuvonInference inference engine.
 
 This module implements Part 4's HTTP API server with a /completions endpoint
 that provides streaming text generation compatible with OpenAI-like interfaces.
@@ -14,16 +14,16 @@ from typing import Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from ruvonvllm.api.schemas.completions import CompletionRequest
-from ruvonvllm.api.schemas.completions import CompletionChoice
-from ruvonvllm.api.schemas.completions import CompletionResponse
-from ruvonvllm.model.gpt2 import GPT2Model
-from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
-from ruvonvllm.api.sequential_queue import sequential_queue
-from ruvonvllm.api.batched_queue import batched_request_queue
-from ruvonvllm.api.continuous_queue import continuous_scheduler
-from ruvonvllm.api.strategies.factory import QueueStrategyFactory
-from ruvonvllm.attention import (
+from ruvoninference.api.schemas.completions import CompletionRequest
+from ruvoninference.api.schemas.completions import CompletionChoice
+from ruvoninference.api.schemas.completions import CompletionResponse
+from ruvoninference.model.gpt2 import GPT2Model
+from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+from ruvoninference.api.sequential_queue import sequential_queue
+from ruvoninference.api.batched_queue import batched_request_queue
+from ruvoninference.api.continuous_queue import continuous_scheduler
+from ruvoninference.api.strategies.factory import QueueStrategyFactory
+from ruvoninference.attention import (
     AttentionImplementation,
     load_model_with_attention,
     get_available_implementations,
@@ -120,7 +120,7 @@ def get_model(
             model.config = hf_model.config
 
             # Initialize generation capabilities after model loading
-            from ruvonvllm.generation.batch_generator import BatchGenerator
+            from ruvoninference.generation.batch_generator import BatchGenerator
 
             model._batch_generator = BatchGenerator(model)
 
@@ -430,8 +430,8 @@ else:
 
 # Create FastAPI app
 app = FastAPI(
-    title="RuvonVLLM API",
-    description="Tiny vLLM Inference Engine - Production-ready inference server",
+    title="RuvonInference API",
+    description="Tiny Inference Engine - Production-ready inference server",
     version="0.1.0",
 )
 
@@ -455,7 +455,7 @@ app.add_middleware(
 async def root():
     """Root endpoint with API information."""
     return {
-        "message": "🚀 RuvonVLLM API - Tiny vLLM Inference Engine",
+        "message": "🚀 RuvonInference API - Tiny Inference Engine",
         "version": "0.1.0",
         "part": 6,
         "description": "Multiple sequential requests with queue processing",
@@ -584,7 +584,7 @@ async def get_recent_completions(limit: int = 20):
 if __name__ == "__main__":
     import uvicorn
 
-    print("🚀 Starting RuvonVLLM API Server...")
+    print("🚀 Starting RuvonInference API Server...")
     print("📚 Part 9: FlashAttention Integration")
 
     # Show available attention implementations
@@ -597,7 +597,7 @@ if __name__ == "__main__":
     print("-" * 50)
 
     uvicorn.run(
-        "ruvonvllm.api.server:app",
+        "ruvoninference.api.server:app",
         host="127.0.0.1",
         port=8000,
         reload=True,

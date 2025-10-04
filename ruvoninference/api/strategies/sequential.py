@@ -9,13 +9,13 @@ import time
 import asyncio
 from typing import Dict, Any, List, TYPE_CHECKING
 
-from ruvonvllm.api.schemas.completions import CompletionRequest
+from ruvoninference.api.schemas.completions import CompletionRequest
 
 from .base import QueueStrategy
 from ..sequential_queue import sequential_queue
 
 if TYPE_CHECKING:
-    from ruvonvllm.api.schemas.completions import CompletionResponse
+    from ruvoninference.api.schemas.completions import CompletionResponse
 
 
 class SequentialQueueStrategy(QueueStrategy):
@@ -71,7 +71,7 @@ class SequentialQueueStrategy(QueueStrategy):
                 raise Exception("Request not found in queue")
 
             # Import here to avoid circular imports
-            from ruvonvllm.api.sequential_queue import RequestStatus
+            from ruvoninference.api.sequential_queue import RequestStatus
 
             if queued_request.status == RequestStatus.COMPLETED:
                 return queued_request.result

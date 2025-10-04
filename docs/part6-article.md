@@ -284,7 +284,7 @@ from commands.common import console, create_header
 from commands import generate, benchmarking, monitoring, testing
 
 # Initialize main CLI app
-app = typer.Typer(help="🚀 RuvonVLLM - Tiny vLLM Inference Engine")
+app = typer.Typer(help="🚀 RuvonInference - Tiny Inference Engine")
 
 # Add command modules
 app.add_typer(generate.app, name="generate", help="🎭 Text generation commands")

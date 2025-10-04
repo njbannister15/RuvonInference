@@ -1,6 +1,6 @@
 # PyTorch Glossary
 
-This document provides definitions of key terms and detailed explanations of common PyTorch functions used in the RuvonVLLM project.
+This document provides definitions of key terms and detailed explanations of common PyTorch functions used in the RuvonInference project.
 
 ## Key Terminology
 
@@ -290,11 +290,11 @@ low_temp_sample = sample_with_temperature(logits, temperature=0.5)
 high_temp_sample = sample_with_temperature(logits, temperature=2.0)
 ```
 
-**Context in RuvonVLLM Sampling**:
+**Context in RuvonInference Sampling**:
 In our Part 5 sampling implementation, `torch.multinomial` is the core function that enables creative text generation:
 
 ```python
-# From ruvonvllm/sampling/strategies.py
+# From ruvoninference/sampling/strategies.py
 def sample_token(logits, temperature=1.0, top_k=None, top_p=None):
     # Apply filtering and temperature scaling
     filtered_logits = apply_filters(logits, top_k, top_p, temperature)
@@ -387,7 +387,7 @@ In language models, entropy measures how uncertain the model is about the next t
    - Tracking entropy changes helps understand why output is boring/chaotic
    - Guides parameter tuning for optimal creativity vs coherence
 
-**RuvonVLLM Implementation**:
+**RuvonInference Implementation**:
 Our `get_sampling_info()` function tracks entropy to analyze sampling effectiveness:
 
 ```python
@@ -415,7 +415,7 @@ Entropy originates from Claude Shannon's information theory (1948). It quantifie
 - How efficiently data can be compressed
 - The minimum number of bits needed to encode outcomes
 
-**Practical Examples in RuvonVLLM**:
+**Practical Examples in RuvonInference**:
 When running `python cli.py sample --show-steps`:
 ```
 Step 1:
@@ -433,7 +433,7 @@ This tells us:
 
 Entropy is essentially **uncertainty engineering** - our sampling strategies control how much randomness vs predictability we want in text generation!
 
-## Usage in RuvonVLLM Context
+## Usage in RuvonInference Context
 
 These functions are commonly used together in language model inference:
 

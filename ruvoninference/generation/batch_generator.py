@@ -9,7 +9,7 @@ import logging
 import torch
 from typing import List, Optional
 
-from ruvonvllm.sampling.strategies import sample_token
+from ruvoninference.sampling.strategies import sample_token
 
 logger = logging.getLogger(__name__)
 

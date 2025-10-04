@@ -1,7 +1,7 @@
 """
 Comprehensive tests for the FastAPI server.
 
-This module provides both unit and integration tests for the RuvonVLLM API server,
+This module provides both unit and integration tests for the RuvonInference API server,
 testing all endpoints, middleware, error handling, and queue strategy integration.
 """
 
@@ -11,8 +11,8 @@ import time
 from unittest.mock import Mock, patch, AsyncMock
 from fastapi.testclient import TestClient
 
-from ruvonvllm.api.server import app, get_model, get_tokenizer
-from ruvonvllm.api.schemas.completions import CompletionResponse
+from ruvoninference.api.server import app, get_model, get_tokenizer
+from ruvoninference.api.schemas.completions import CompletionResponse
 
 
 class TestFastAPIServer:
@@ -60,7 +60,7 @@ class TestFastAPIServer:
         assert "endpoints" in data
 
         # Verify specific content
-        assert "RuvonVLLM API" in data["message"]
+        assert "RuvonInference API" in data["message"]
         assert data["version"] == "0.1.0"
         assert isinstance(data["endpoints"], dict)
 
@@ -69,15 +69,15 @@ class TestFastAPIServer:
         for endpoint in expected_endpoints:
             assert endpoint in data["endpoints"]
 
-    @patch("ruvonvllm.api.server.get_available_implementations")
-    @patch("ruvonvllm.api.server.get_best_attention_implementation")
-    @patch("ruvonvllm.api.server.sequential_queue")
+    @patch("ruvoninference.api.server.get_available_implementations")
+    @patch("ruvoninference.api.server.get_best_attention_implementation")
+    @patch("ruvoninference.api.server.sequential_queue")
     def test_health_endpoint(
         self, mock_queue, mock_best_impl, mock_available_impl, client
     ):
         """Test the health check endpoint returns comprehensive status."""
         # Mock attention implementations
-        from ruvonvllm.attention import AttentionImplementation
+        from ruvoninference.attention import AttentionImplementation
 
         mock_available_impl.return_value = [
             AttentionImplementation.EAGER,
@@ -114,7 +114,7 @@ class TestFastAPIServer:
         # Verify queue stats are included
         assert data["queue"]["total_requests"] == 10
 
-    @patch("ruvonvllm.api.server.queue_strategy")
+    @patch("ruvoninference.api.server.queue_strategy")
     def test_completions_endpoint_success(
         self, mock_strategy, client, sample_completion_request
     ):
@@ -161,7 +161,7 @@ class TestFastAPIServer:
         data = response.json()
         assert "streaming not supported" in data["detail"].lower()
 
-    @patch("ruvonvllm.api.server.queue_strategy")
+    @patch("ruvoninference.api.server.queue_strategy")
     def test_completions_endpoint_processing_error(
         self, mock_strategy, client, sample_completion_request
     ):
@@ -191,7 +191,7 @@ class TestFastAPIServer:
         # Should return validation error
         assert response.status_code == 422
 
-    @patch("ruvonvllm.api.server.sequential_queue")
+    @patch("ruvoninference.api.server.sequential_queue")
     def test_request_status_endpoint_found(self, mock_queue, client):
         """Test successful request status lookup."""
         # Mock a queued request with status
@@ -231,7 +231,7 @@ class TestFastAPIServer:
         assert data["id"] == "test-request-123"
         assert data["status"] == "completed"
 
-    @patch("ruvonvllm.api.server.sequential_queue")
+    @patch("ruvoninference.api.server.sequential_queue")
     def test_request_status_endpoint_not_found(self, mock_queue, client):
         """Test request status lookup for non-existent request."""
         mock_queue.get_request_status.return_value = None
@@ -242,7 +242,7 @@ class TestFastAPIServer:
         data = response.json()
         assert "request not found" in data["detail"].lower()
 
-    @patch("ruvonvllm.api.server.queue_strategy")
+    @patch("ruvoninference.api.server.queue_strategy")
     def test_queue_status_endpoint(self, mock_strategy, client):
         """Test queue status endpoint."""
         mock_stats = {
@@ -266,7 +266,7 @@ class TestFastAPIServer:
         assert data["total_requests"] == 100
         assert data["completed_requests"] == 95
 
-    @patch("ruvonvllm.api.server.queue_strategy")
+    @patch("ruvoninference.api.server.queue_strategy")
     def test_recent_completions_endpoint(self, mock_strategy, client):
         """Test recent completions endpoint."""
         mock_completions = [
@@ -298,7 +298,7 @@ class TestFastAPIServer:
 
     def test_recent_completions_with_limit(self, client):
         """Test recent completions endpoint with custom limit."""
-        with patch("ruvonvllm.api.server.queue_strategy") as mock_strategy:
+        with patch("ruvoninference.api.server.queue_strategy") as mock_strategy:
             mock_strategy.get_recent_completions.return_value = []
 
             response = client.get("/queue/recent?limit=5")
@@ -310,7 +310,7 @@ class TestFastAPIServer:
     def test_server_startup_configuration(self):
         """Test that server starts with correct configuration."""
         # Verify app configuration
-        assert app.title == "RuvonVLLM API"
+        assert app.title == "RuvonInference API"
         assert app.version == "0.1.0"
 
         # Verify middleware is configured
@@ -361,12 +361,12 @@ class TestFastAPIServer:
 class TestServerHelperFunctions:
     """Test suite for server helper functions."""
 
-    @patch("ruvonvllm.api.server.get_available_implementations")
-    @patch("ruvonvllm.api.server.recommend_implementation")
+    @patch("ruvoninference.api.server.get_available_implementations")
+    @patch("ruvoninference.api.server.recommend_implementation")
     def test_get_best_attention_implementation(self, mock_recommend, mock_available):
         """Test attention implementation selection logic."""
-        from ruvonvllm.api.server import get_best_attention_implementation
-        from ruvonvllm.attention import AttentionImplementation
+        from ruvoninference.api.server import get_best_attention_implementation
+        from ruvoninference.attention import AttentionImplementation
 
         mock_recommend.return_value = AttentionImplementation.FLASH_ATTENTION_2
 
@@ -375,13 +375,13 @@ class TestServerHelperFunctions:
         assert result == AttentionImplementation.FLASH_ATTENTION_2
         mock_recommend.assert_called_once_with(512, "cpu")
 
-    @patch("ruvonvllm.api.server.load_model_with_attention")
-    @patch("ruvonvllm.api.server.get_best_attention_implementation")
-    @patch("ruvonvllm.api.server.get_available_implementations")
+    @patch("ruvoninference.api.server.load_model_with_attention")
+    @patch("ruvoninference.api.server.get_best_attention_implementation")
+    @patch("ruvoninference.api.server.get_available_implementations")
     def test_get_model_caching(self, mock_available, mock_best, mock_load):
         """Test model caching behavior in get_model function."""
-        from ruvonvllm.api.server import model_instances
-        from ruvonvllm.attention import AttentionImplementation
+        from ruvoninference.api.server import model_instances
+        from ruvoninference.attention import AttentionImplementation
 
         # Clear any existing cached models
         model_instances.clear()
@@ -395,7 +395,7 @@ class TestServerHelperFunctions:
         mock_load.return_value = mock_model
 
         # First call should load the model
-        with patch("ruvonvllm.api.server.GPT2Model") as mock_gpt2:
+        with patch("ruvoninference.api.server.GPT2Model") as mock_gpt2:
             mock_gpt2_instance = Mock()
             mock_gpt2.return_value = mock_gpt2_instance
 
@@ -407,7 +407,7 @@ class TestServerHelperFunctions:
 
         # Second call should use cached model
         mock_load.reset_mock()
-        with patch("ruvonvllm.model.gpt2.GPT2Model") as mock_gpt2:
+        with patch("ruvoninference.model.gpt2.GPT2Model") as mock_gpt2:
             result2 = get_model("gpt2")
 
             # Should not load again
@@ -417,10 +417,10 @@ class TestServerHelperFunctions:
         # Should return the same instance
         assert result1 is result2
 
-    @patch("ruvonvllm.api.server.GPT2TokenizerWrapper")
+    @patch("ruvoninference.api.server.GPT2TokenizerWrapper")
     def test_get_tokenizer_caching(self, mock_tokenizer_class):
         """Test tokenizer caching behavior."""
-        from ruvonvllm.api.server import tokenizer_instances
+        from ruvoninference.api.server import tokenizer_instances
 
         # Clear any existing cached tokenizers
         tokenizer_instances.clear()
@@ -460,7 +460,7 @@ class TestServerErrorHandling:
         response = client.get("/completions")
         assert response.status_code == 405
 
-    @patch("ruvonvllm.api.server.queue_strategy")
+    @patch("ruvoninference.api.server.queue_strategy")
     def test_internal_server_error_handling(self, mock_strategy, client):
         """Test handling of internal server errors."""
         # Mock an unexpected error in the strategy

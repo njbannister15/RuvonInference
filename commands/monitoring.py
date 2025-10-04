@@ -1,5 +1,5 @@
 """
-Real-time monitoring commands for RuvonVLLM.
+Real-time monitoring commands for RuvonInference.
 
 This module provides live dashboard functionality for monitoring
 queue statistics, active requests, and server health in real-time.
@@ -368,7 +368,9 @@ def monitor(
                     # Header
                     header_text = Text()
                     header_text.append("📊 ", style="bold blue")
-                    header_text.append("RuvonVLLM Live Monitor", style="bold white")
+                    header_text.append(
+                        "RuvonInference Live Monitor", style="bold white"
+                    )
                     header_text.append(
                         f" • {datetime.now().strftime('%H:%M:%S')}", style="dim white"
                     )

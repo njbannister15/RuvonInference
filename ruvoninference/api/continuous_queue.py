@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Any
 from queue import Queue
 import threading
 
-from ruvonvllm.api.schemas.completions import CompletionChoice
+from ruvoninference.api.schemas.completions import CompletionChoice
 
 
 logger = logging.getLogger(__name__)
@@ -453,8 +453,8 @@ class ContinuousBatchScheduler:
         4. Repeats with dynamic batch composition
         """
         # Import model classes - delayed to avoid circular imports during module init
-        from ruvonvllm.model.gpt2 import GPT2Model
-        from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+        from ruvoninference.model.gpt2 import GPT2Model
+        from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 
         # Load model and tokenizer once - expensive operations done once at startup
         model = GPT2Model("gpt2", device="cpu")  # Initialize model wrapper
@@ -570,7 +570,7 @@ class ContinuousBatchScheduler:
                         ]  # Just new part
 
                         # API RESPONSE CREATION: Package result in OpenAI-compatible format
-                        from ruvonvllm.api.schemas.completions import (
+                        from ruvoninference.api.schemas.completions import (
                             CompletionResponse,
                         )
 

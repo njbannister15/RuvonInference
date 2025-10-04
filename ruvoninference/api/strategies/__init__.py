@@ -2,7 +2,7 @@
 Queue processing strategies package.
 
 This package implements the Strategy pattern for different queue processing
-approaches in the RuvonVLLM inference engine.
+approaches in the RuvonInference inference engine.
 """
 
 from .base import QueueStrategy

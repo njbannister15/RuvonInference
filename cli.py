@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RuvonVLLM CLI - A beautiful command-line interface for our educational inference engine.
+RuvonInference CLI - A beautiful command-line interface for our educational inference engine.
 
 This CLI provides an interactive and visually appealing way to demonstrate our
 inference engine capabilities, starting with Part 1's tokenizer and forward pass demo.
@@ -14,7 +14,7 @@ from commands.common import console, create_header
 from commands import generate, benchmarking, monitoring, testing
 
 # Initialize main CLI app
-app = typer.Typer(help="🚀 RuvonVLLM - Educational Inference Engine")
+app = typer.Typer(help="🚀 RuvonInference - Educational Inference Engine")
 
 # Add command modules
 app.add_typer(generate.app, name="generate", help="🎭 Text generation commands")
@@ -109,7 +109,7 @@ def serve(
 
     # Get attention implementation info
     try:
-        from ruvonvllm.attention import (
+        from ruvoninference.attention import (
             get_available_implementations,
             recommend_implementation,
         )
@@ -124,7 +124,7 @@ def serve(
 
     # Show server info
     server_panel = Panel(
-        f"🌐 Starting RuvonVLLM API Server\n"
+        f"🌐 Starting RuvonInference API Server\n"
         f"📍 Address: [bold cyan]http://{host}:{port}[/bold cyan]\n"
         f"🔄 Auto-reload: [bold cyan]{'Enabled' if reload else 'Disabled'}[/bold cyan]\n"
         f"📦 Queue Mode: [bold {queue_style}]{queue_display}[/bold {queue_style}]\n"
@@ -133,8 +133,8 @@ def serve(
         f"🩺 Health Check: [bold cyan]http://{host}:{port}/health[/bold cyan]\n"
         f"🚀 ASGI Server: [bold yellow]uvicorn[/bold yellow] (uvloop, httptools, keep-alive)\n"
         f"📊 Config: [bold yellow]1 worker[/bold yellow] | [bold green]CORS enabled[/bold green] | [bold red]GZip disabled[/bold red]\n"
-        f"📝 Logs: [bold cyan]logs/ruvonvllm_*.log[/bold cyan]",
-        title="🚀 RuvonVLLM API Server Configuration",
+        f"📝 Logs: [bold cyan]logs/ruvoninference_*.log[/bold cyan]",
+        title="🚀 RuvonInference API Server Configuration",
         style="green",
         border_style="green",
     )
@@ -191,7 +191,9 @@ curl -X POST http://localhost:8000/completions \\
     os.makedirs(log_dir, exist_ok=True)
 
     # Setup file logging
-    log_filename = f"{log_dir}/ruvonvllm_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    log_filename = (
+        f"{log_dir}/ruvoninference_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    )
 
     # Configure logging
     logging.basicConfig(
@@ -210,7 +212,7 @@ curl -X POST http://localhost:8000/completions \\
 
     try:
         uvicorn.run(
-            "ruvonvllm.api.server:app",
+            "ruvoninference.api.server:app",
             host=host,
             port=port,
             reload=reload,
@@ -239,13 +241,13 @@ curl -X POST http://localhost:8000/completions \\
 @app.command()
 def info():
     """
-    ℹ️  Show information about RuvonVLLM
+    ℹ️  Show information about RuvonInference
     """
     console.print(create_header())
     console.print()
 
     info_text = """
-[bold blue]🚀 RuvonVLLM - Educational Inference Engine[/bold blue]
+[bold blue]🚀 RuvonInference - Educational Inference Engine[/bold blue]
 
 A miniature but real inference system for transformer models, built from scratch
 over 20 Parts. This project demonstrates modern LLM serving techniques including:

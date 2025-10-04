@@ -8,8 +8,8 @@ to token generation, ensuring all components work together correctly.
 import pytest
 import torch
 
-from ruvonvllm.model.gpt2 import GPT2Model
-from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+from ruvoninference.model.gpt2 import GPT2Model
+from ruvoninference.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 
 
 class TestBatchGenerationIntegration:
