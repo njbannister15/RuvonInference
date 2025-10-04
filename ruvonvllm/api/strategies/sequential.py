@@ -9,11 +9,13 @@ import time
 import asyncio
 from typing import Dict, Any, List, TYPE_CHECKING
 
+from ruvonvllm.api.schemas.completions import CompletionRequest
+
 from .base import QueueStrategy
 from ..sequential_queue import sequential_queue
 
 if TYPE_CHECKING:
-    from ruvonvllm.api.server import CompletionRequest, CompletionResponse
+    from ruvonvllm.api.schemas.completions import CompletionResponse
 
 
 class SequentialQueueStrategy(QueueStrategy):

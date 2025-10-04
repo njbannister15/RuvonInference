@@ -15,6 +15,8 @@ from typing import Dict, List, Optional, Any
 from queue import Queue
 import threading
 
+from ruvonvllm.api.schemas.completions import CompletionChoice
+
 
 logger = logging.getLogger(__name__)
 
@@ -568,9 +570,8 @@ class ContinuousBatchScheduler:
                         ]  # Just new part
 
                         # API RESPONSE CREATION: Package result in OpenAI-compatible format
-                        from ruvonvllm.api.server import (
+                        from ruvonvllm.api.schemas.completions import (
                             CompletionResponse,
-                            CompletionChoice,
                         )
 
                         result = CompletionResponse(

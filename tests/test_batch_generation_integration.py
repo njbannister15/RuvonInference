@@ -376,7 +376,7 @@ class TestBatchGenerationIntegration:
         for i, (result_sequence, original_length, prompt) in enumerate(
             zip(results, original_lengths, prompts)
         ):
-            print(f"\nPrompt {i+1}: '{prompt}'")
+            print(f"\nPrompt {i + 1}: '{prompt}'")
 
             # Decode and display the result
             try:

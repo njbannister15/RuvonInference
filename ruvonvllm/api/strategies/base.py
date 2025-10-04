@@ -8,8 +8,10 @@ approaches: sequential, batched (prefill), and continuous batching.
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, TYPE_CHECKING
 
+from ruvonvllm.api.schemas.completions import CompletionRequest
+
 if TYPE_CHECKING:
-    from ruvonvllm.api.server import CompletionRequest, CompletionResponse
+    from ruvonvllm.api.schemas.completions import CompletionResponse
 
 
 class QueueStrategy(ABC):

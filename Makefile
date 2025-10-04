@@ -12,7 +12,7 @@ lint:
 	ruff check .
 
 test:
-	uv run pytest tests/unit -v
+	uv run pytest $(if $(filter-out undefined,$(origin ARGS)),$(ARGS),tests/unit) -v
 
 test-fast:
 	uv run pytest tests/unit -v -m "not slow"

@@ -902,13 +902,13 @@ def show_implementations():
             info = get_implementation_info(implementation)
 
             # Create info panel
-            implementation_text = f"""[bold cyan]{info['name']}[/bold cyan]
+            implementation_text = f"""[bold cyan]{info["name"]}[/bold cyan]
 
-[yellow]Description:[/yellow] {info['description']}
-[yellow]Memory Efficiency:[/yellow] {info['memory_efficiency']}
-[yellow]Speed Profile:[/yellow] {info['speed_profile']}
-[yellow]Requirements:[/yellow] {info['requirements']}
-[yellow]Best For:[/yellow] {info['best_for']}"""
+[yellow]Description:[/yellow] {info["description"]}
+[yellow]Memory Efficiency:[/yellow] {info["memory_efficiency"]}
+[yellow]Speed Profile:[/yellow] {info["speed_profile"]}
+[yellow]Requirements:[/yellow] {info["requirements"]}
+[yellow]Best For:[/yellow] {info["best_for"]}"""
 
             panel = Panel(
                 implementation_text,

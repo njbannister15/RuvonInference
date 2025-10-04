@@ -13,8 +13,10 @@ from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 
+from ruvonvllm.api.schemas.completions import CompletionRequest
+from ruvonvllm.api.schemas.completions import CompletionChoice
+from ruvonvllm.api.schemas.completions import CompletionResponse
 from ruvonvllm.model.gpt2 import GPT2Model
 from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
 from ruvonvllm.api.sequential_queue import sequential_queue
@@ -27,84 +29,6 @@ from ruvonvllm.attention import (
     get_available_implementations,
     recommend_implementation,
 )
-
-
-class CompletionRequest(BaseModel):
-    """
-    Request model for text completion endpoint.
-
-    This follows OpenAI's completion API structure while supporting our
-    advanced sampling capabilities for creative text generation.
-    """
-
-    prompt: str = Field(..., description="The text prompt to complete")
-    max_tokens: int = Field(
-        default=20, ge=1, le=500, description="Maximum tokens to generate"
-    )
-    model: str = Field(default="gpt2", description="Model to use for generation")
-    stream: bool = Field(default=False, description="Whether to stream the response")
-    use_cache: bool = Field(
-        default=True, description="Whether to use KV-cache optimization"
-    )
-
-    # Sampling parameters
-    temperature: float = Field(
-        default=1.0,
-        ge=0.1,
-        le=2.0,
-        description="Temperature for sampling (0.1=focused, 1.0=balanced, 2.0=creative)",
-    )
-    top_k: Optional[int] = Field(
-        default=None,
-        ge=1,
-        le=1000,
-        description="Top-k sampling: only consider k most likely tokens",
-    )
-    top_p: Optional[float] = Field(
-        default=None,
-        ge=0.01,
-        le=1.0,
-        description="Nucleus sampling: dynamic cutoff based on cumulative probability",
-    )
-
-    # Attention implementation parameter
-    attention_implementation: str = Field(
-        default="eager",
-        description="Attention implementation: 'eager', 'flash_attention_2', or 'sdpa'",
-    )
-
-
-class CompletionChoice(BaseModel):
-    """Single completion choice in the response."""
-
-    text: str
-    index: int
-    finish_reason: Optional[str] = None
-
-
-class CompletionResponse(BaseModel):
-    """
-    Response model for text completion.
-
-    Follows OpenAI API structure for compatibility with existing clients.
-    """
-
-    id: str
-    object: str = "text_completion"
-    created: int
-    model: str
-    choices: list[CompletionChoice]
-    usage: Dict[str, int]
-
-
-class CompletionStreamChunk(BaseModel):
-    """Single chunk in a streaming completion response."""
-
-    id: str
-    object: str = "text_completion"
-    created: int
-    model: str
-    choices: list[Dict[str, Any]]
 
 
 # Global model instances (initialized on startup)
