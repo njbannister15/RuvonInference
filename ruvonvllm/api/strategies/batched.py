@@ -98,6 +98,7 @@ class BatchedQueueStrategy(QueueStrategy):
         stats = self._queue.stats
         stats["mode"] = "batched"
         stats["part"] = self.part_number
+        stats["strategy_name"] = self.__class__.__name__
         return stats
 
     def get_recent_completions(self, limit: int = 20) -> List[Dict[str, Any]]:

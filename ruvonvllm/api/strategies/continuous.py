@@ -100,6 +100,7 @@ class ContinuousQueueStrategy(QueueStrategy):
         stats = self._scheduler.stats
         stats["mode"] = "continuous"
         stats["part"] = self.part_number
+        stats["strategy_name"] = self.__class__.__name__
         return stats
 
     def get_recent_completions(self, limit: int = 20) -> List[Dict[str, Any]]:

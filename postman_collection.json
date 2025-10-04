@@ -1,0 +1,706 @@
+{
+	"info": {
+		"_postman_id": "ruvonvllm-api-tests",
+		"name": "RuvonVLLM API Tests",
+		"description": "Comprehensive test suite for RuvonVLLM API endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health & Info Tests",
+			"item": [
+				{
+					"name": "Root Endpoint - API Info",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains API info\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    pm.expect(jsonData).to.have.property('version');",
+									"    pm.expect(jsonData).to.have.property('endpoints');",
+									"    pm.expect(jsonData.message).to.include('RuvonVLLM API');",
+									"    pm.expect(jsonData.version).to.equal('0.1.0');",
+									"});",
+									"",
+									"pm.test(\"All expected endpoints are documented\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const endpoints = jsonData.endpoints;",
+									"    pm.expect(endpoints).to.have.property('/completions');",
+									"    pm.expect(endpoints).to.have.property('/health');",
+									"    pm.expect(endpoints).to.have.property('/queue');",
+									"    pm.expect(endpoints).to.have.property('/requests/{id}');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								""
+							]
+						}
+					}
+				},
+				{
+					"name": "Health Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Health status is healthy\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.equal('healthy');",
+									"});",
+									"",
+									"pm.test(\"Response contains required health info\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('models_loaded');",
+									"    pm.expect(jsonData).to.have.property('tokenizers_loaded');",
+									"    pm.expect(jsonData).to.have.property('attention');",
+									"    pm.expect(jsonData).to.have.property('queue');",
+									"});",
+									"",
+									"pm.test(\"Attention info is present\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const attention = jsonData.attention;",
+									"    pm.expect(attention).to.have.property('available_implementations');",
+									"    pm.expect(attention).to.have.property('default_implementation');",
+									"    pm.expect(attention.available_implementations).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Completion Tests",
+			"item": [
+				{
+					"name": "Basic Completion",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has completion structure\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('created');",
+									"    pm.expect(jsonData).to.have.property('model');",
+									"    pm.expect(jsonData).to.have.property('choices');",
+									"    pm.expect(jsonData).to.have.property('usage');",
+									"});",
+									"",
+									"pm.test(\"Choices array contains valid completion\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.choices).to.be.an('array');",
+									"    pm.expect(jsonData.choices.length).to.be.greaterThan(0);",
+									"    ",
+									"    const choice = jsonData.choices[0];",
+									"    pm.expect(choice).to.have.property('text');",
+									"    pm.expect(choice).to.have.property('index');",
+									"    pm.expect(choice).to.have.property('finish_reason');",
+									"    pm.expect(choice.text).to.be.a('string');",
+									"});",
+									"",
+									"pm.test(\"Usage statistics are present\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const usage = jsonData.usage;",
+									"    pm.expect(usage).to.have.property('prompt_tokens');",
+									"    pm.expect(usage).to.have.property('completion_tokens');",
+									"    pm.expect(usage).to.have.property('total_tokens');",
+									"    pm.expect(usage.total_tokens).to.equal(usage.prompt_tokens + usage.completion_tokens);",
+									"});",
+									"",
+									"// Store request ID for status checking",
+									"const jsonData = pm.response.json();",
+									"pm.globals.set('last_request_id', jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model\": \"gpt2\",\n    \"prompt\": \"Once upon a time\",\n    \"max_tokens\": 20,\n    \"temperature\": 0.8,\n    \"top_k\": 50,\n    \"top_p\": 0.9,\n    \"stream\": false,\n    \"use_cache\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/completions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"completions"
+							]
+						}
+					}
+				},
+				{
+					"name": "Completion with Flash Attention",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains generated text\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.choices[0].text).to.be.a('string');",
+									"    pm.expect(jsonData.model).to.equal('gpt2');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model\": \"gpt2\",\n    \"prompt\": \"The future of AI is\",\n    \"max_tokens\": 15,\n    \"temperature\": 0.7,\n    \"attention_implementation\": \"flash_attention_2\",\n    \"stream\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/completions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"completions"
+							]
+						}
+					}
+				},
+				{
+					"name": "Completion with Null Attention Implementation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Handles null attention implementation gracefully\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.choices[0].text).to.be.a('string');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model\": \"gpt2\",\n    \"prompt\": \"Testing null attention\",\n    \"max_tokens\": 10,\n    \"attention_implementation\": null,\n    \"stream\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/completions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"completions"
+							]
+						}
+					}
+				},
+				{
+					"name": "Streaming Not Supported (400 Error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Error message mentions streaming not supported\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.detail.toLowerCase()).to.include('streaming not supported');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model\": \"gpt2\",\n    \"prompt\": \"Test streaming\",\n    \"max_tokens\": 10,\n    \"stream\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/completions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"completions"
+							]
+						}
+					}
+				},
+				{
+					"name": "Invalid Request (422 Error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 422\", function () {",
+									"    pm.response.to.have.status(422);",
+									"});",
+									"",
+									"pm.test(\"Validation error is returned\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('detail');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model\": \"gpt2\",\n    \"max_tokens\": \"not_a_number\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/completions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"completions"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Queue Management",
+			"item": [
+				{
+					"name": "Queue Status",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Queue stats contain expected fields\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('strategy_name');",
+									"    // Note: Different strategies may have different stat fields",
+									"    // This is a basic check that works for all strategies",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/queue",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"queue"
+							]
+						}
+					}
+				},
+				{
+					"name": "Recent Completions",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response is an array\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"If completions exist, they have required fields\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData.length > 0) {",
+									"        const completion = jsonData[0];",
+									"        pm.expect(completion).to.have.property('id');",
+									"        // Other fields may vary by strategy",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/queue/recent?limit=5",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"queue",
+								"recent"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "5"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Request Status (404 for non-existent)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Error message mentions request not found\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.detail.toLowerCase()).to.include('request not found');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/requests/non-existent-request-id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"requests",
+								"non-existent-request-id"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Performance & Load Tests",
+			"item": [
+				{
+					"name": "Multiple Concurrent Requests",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time is reasonable\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(30000); // 30 seconds max",
+									"});",
+									"",
+									"pm.test(\"Generated text is present\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.choices[0].text).to.be.a('string');",
+									"    pm.expect(jsonData.choices[0].text.length).to.be.greaterThan(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model\": \"gpt2\",\n    \"prompt\": \"In a world where technology advances rapidly\",\n    \"max_tokens\": 25,\n    \"temperature\": 0.8,\n    \"stream\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/completions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"completions"
+							]
+						}
+					}
+				},
+				{
+					"name": "Long Prompt Test",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Handles long prompts correctly\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.choices[0].text).to.be.a('string');",
+									"    pm.expect(jsonData.usage.prompt_tokens).to.be.greaterThan(10);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model\": \"gpt2\",\n    \"prompt\": \"This is a longer prompt to test how the system handles more substantial input text. It contains multiple sentences and should demonstrate the model's ability to generate coherent completions for extended context. The prompt includes various topics and themes to ensure comprehensive testing.\",\n    \"max_tokens\": 30,\n    \"temperature\": 0.7,\n    \"stream\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/completions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"completions"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Documentation & Schema",
+			"item": [
+				{
+					"name": "OpenAPI Schema",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Valid OpenAPI schema structure\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('openapi');",
+									"    pm.expect(jsonData).to.have.property('info');",
+									"    pm.expect(jsonData).to.have.property('paths');",
+									"});",
+									"",
+									"pm.test(\"API endpoints are documented\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const paths = jsonData.paths;",
+									"    pm.expect(paths).to.have.property('/');",
+									"    pm.expect(paths).to.have.property('/health');",
+									"    pm.expect(paths).to.have.property('/completions');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/openapi.json",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"openapi.json"
+							]
+						}
+					}
+				},
+				{
+					"name": "Swagger UI Access",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains HTML\", function () {",
+									"    pm.expect(pm.response.text()).to.include('html');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/docs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"docs"
+							]
+						}
+					}
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Set default base URL if not already set",
+					"if (!pm.environment.get('base_url')) {",
+					"    pm.environment.set('base_url', 'http://127.0.0.1:8000');",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global test for all requests",
+					"pm.test(\"Response time is acceptable\", function () {",
+					"    pm.expect(pm.response.responseTime).to.be.below(60000); // 60 seconds max",
+					"});",
+					"",
+					"pm.test(\"Content-Type is JSON (for JSON responses)\", function () {",
+					"    if (pm.response.headers.get('Content-Type') && pm.response.headers.get('Content-Type').includes('application/json')) {",
+					"        pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+					"    }",
+					"});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://127.0.0.1:8000",
+			"description": "Base URL for the RuvonVLLM API server"
+		}
+	]
+}
