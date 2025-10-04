@@ -76,30 +76,31 @@ Each part we’ll cut a vertical slice — from tokenizer → kernel → schedul
 * **Demo:** 2 long + 3 short requests, all served together. ✅
 * **Article:** *"Continuous batching: the secret to high-throughput inference."* ✅
 
-**Part 9 — Logprobs API**
+**Part 9 — FlashAttention Integration** ✅ **COMPLETE**
+
+* **What:** Integrate FlashAttention for memory-efficient attention. ✅
+* **Why:** Demonstrates O(n²) → O(n) memory breakthrough, modern optimization techniques. ✅
+* **Demo:** Compare attention implementations (eager, sdpa, flash_attention_2). ✅
+* **Article:** *"FlashAttention Integration: Using memory-efficient attention for longer sequences."* ✅
+* **BONUS:** Flexible attention implementation system, comprehensive benchmarking, AWS production testing planned ✅
+
+**Part 10 — Logprobs API**
 
 * **What:** Return top-n logprobs per token.
 * **Why:** Needed for fine-grained control + eval.
 * **Demo:** Show prompt with per-token logprobs.
-* **Article:** *“Peeking into the mind of an LLM: logprobs in action.”*
+* **Article:** *"Peeking into the mind of an LLM: logprobs in action."*
 
-**Part 10 — Telemetry (Tokens/s, Latency, GPU Mem)**
+**Part 11 — Telemetry (Tokens/s, Latency, GPU Mem)**
 
 * **What:** Add Prometheus counters; log TTFT + TPOT.
 * **Why:** Investors love metrics.
 * **Demo:** Live dashboard of tokens/s during load test.
-* **Article:** *“Measuring what matters: telemetry in a tiny LLM engine.”*
+* **Article:** *"Measuring what matters: telemetry in a tiny LLM engine."*
 
 ---
 
 ## Phase 3 — Efficiency + Scaling
-
-**Part 11 — FlashAttention Integration**
-
-* **What:** Use FlashAttention for prefill.
-* **Why:** Throughput jump, modern technique.
-* **Demo:** Compare prefill speed before/after.
-* **Article:** *“Supercharging prefill with FlashAttention.”*
 
 **Part 12 — Triton Decode Kernel (Paged KV)**
 

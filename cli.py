@@ -14,7 +14,7 @@ from commands.common import console, create_header
 from commands import generate, benchmarking, monitoring, testing
 
 # Initialize main CLI app
-app = typer.Typer(help="🚀 RuvonVLLM - Tiny vLLM Inference Engine")
+app = typer.Typer(help="🚀 RuvonVLLM - Educational Inference Engine")
 
 # Add command modules
 app.add_typer(generate.app, name="generate", help="🎭 Text generation commands")
@@ -107,12 +107,28 @@ def serve(
     }
     queue_display, queue_style = mode_info[queue_mode]
 
+    # Get attention implementation info
+    try:
+        from ruvonvllm.attention import (
+            get_available_implementations,
+            recommend_implementation,
+        )
+
+        available_implementations = get_available_implementations()
+        best_implementation = recommend_implementation(
+            512, "cpu"
+        )  # Typical server workload
+        attention_info = f"⚡ Attention: [bold magenta]{best_implementation.value}[/bold magenta] (available: {', '.join([impl.value for impl in available_implementations])})\n"
+    except ImportError:
+        attention_info = "⚡ Attention: [bold yellow]Standard[/bold yellow] (FlashAttention not loaded)\n"
+
     # Show server info
     server_panel = Panel(
         f"🌐 Starting RuvonVLLM API Server\n"
         f"📍 Address: [bold cyan]http://{host}:{port}[/bold cyan]\n"
         f"🔄 Auto-reload: [bold cyan]{'Enabled' if reload else 'Disabled'}[/bold cyan]\n"
         f"📦 Queue Mode: [bold {queue_style}]{queue_display}[/bold {queue_style}]\n"
+        f"{attention_info}"
         f"📖 API Docs: [bold cyan]http://{host}:{port}/docs[/bold cyan]\n"
         f"🩺 Health Check: [bold cyan]http://{host}:{port}/health[/bold cyan]\n"
         f"🚀 ASGI Server: [bold yellow]uvicorn[/bold yellow] (uvloop, httptools, keep-alive)\n"
@@ -129,7 +145,7 @@ def serve(
     instructions_text = """
 [bold blue]📋 Quick Test Commands:[/bold blue]
 
-[bold yellow]1. Health Check:[/bold yellow]
+[bold yellow]1. Health Check (shows attention implementations):[/bold yellow]
 ```bash
 curl http://localhost:8000/health
 ```
@@ -146,6 +162,13 @@ curl -X POST http://localhost:8000/completions \\
 curl -X POST http://localhost:8000/completions \\
   -H "Content-Type: application/json" \\
   -d '{"prompt": "The future of AI is", "max_tokens": 15, "stream": true}'
+```
+
+[bold yellow]4. With specific attention implementation:[/bold yellow]
+```bash
+curl -X POST http://localhost:8000/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{"prompt": "Hello world", "max_tokens": 5, "attention_implementation": "sdpa"}'
 ```
     """
 
@@ -222,7 +245,7 @@ def info():
     console.print()
 
     info_text = """
-[bold blue]🚀 RuvonVLLM - Tiny vLLM Inference Engine[/bold blue]
+[bold blue]🚀 RuvonVLLM - Educational Inference Engine[/bold blue]
 
 A miniature but real inference system for transformer models, built from scratch
 over 20 Parts. This project demonstrates modern LLM serving techniques including:
@@ -240,11 +263,12 @@ over 20 Parts. This project demonstrates modern LLM serving techniques including
 • 📦 Request queue system for sequential processing
 • 🚀 Stress testing with incremental batch sizes
 • 📊 Real-time monitoring dashboard (htop for LLM servers)
+• ⚡ Continuous batching (Parts 6-8)
+• 🚀 FlashAttention integration (Part 9) - Multiple attention implementations
 
 [bold yellow]🎯 Upcoming Features:[/bold yellow]
-• ⚡ Continuous batching (Parts 6-8)
-• 📊 Telemetry and metrics (Part 10)
-• 🚀 FlashAttention integration (Part 11)
+• 📊 Logprobs API (Part 10)
+• 📊 Telemetry and metrics (Part 11)
 • 🔧 Custom Triton kernels (Part 12)
 • 📄 Paged KV-cache allocator (Part 13)
 • 🎭 Speculative decoding (Part 16)

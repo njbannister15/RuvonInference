@@ -21,6 +21,12 @@ from ruvonvllm.api.sequential_queue import sequential_queue
 from ruvonvllm.api.batched_queue import batched_request_queue
 from ruvonvllm.api.continuous_queue import continuous_scheduler
 from ruvonvllm.api.strategies.factory import QueueStrategyFactory
+from ruvonvllm.attention import (
+    AttentionImplementation,
+    load_model_with_attention,
+    get_available_implementations,
+    recommend_implementation,
+)
 
 
 class CompletionRequest(BaseModel):
@@ -61,6 +67,12 @@ class CompletionRequest(BaseModel):
         description="Nucleus sampling: dynamic cutoff based on cumulative probability",
     )
 
+    # Attention implementation parameter
+    attention_implementation: str = Field(
+        default="eager",
+        description="Attention implementation: 'eager', 'flash_attention_2', or 'sdpa'",
+    )
+
 
 class CompletionChoice(BaseModel):
     """Single completion choice in the response."""
@@ -96,30 +108,110 @@ class CompletionStreamChunk(BaseModel):
 
 
 # Global model instances (initialized on startup)
-model_instances: Dict[str, GPT2Model] = {}
+# Models can be either our custom GPT2Model or HuggingFace models with attention implementations
+model_instances: Dict[str, Any] = {}
 tokenizer_instances: Dict[str, GPT2TokenizerWrapper] = {}
 
 
-def get_model(model_name: str = "gpt2") -> GPT2Model:
+def get_best_attention_implementation(
+    model_name: str = "gpt2", device: str = "cpu"
+) -> AttentionImplementation:
     """
-    Get or create a model instance.
+    Get the best available attention implementation for the given model and device.
+
+    Args:
+        model_name: Name of the model
+        device: Target device (cpu, cuda, etc.)
+
+    Returns:
+        Best available AttentionImplementation
+    """
+    # Use recommend_implementation to get the best choice for our use case
+    # For server workloads, we want balanced performance
+    sequence_length = 512  # Typical sequence length for server requests
+    return recommend_implementation(sequence_length, device)
+
+
+def get_model(
+    model_name: str = "gpt2", attention_implementation: Optional[str] = None
+) -> GPT2Model:
+    """
+    Get or create a model instance with the best available attention implementation.
 
     This implements lazy loading - models are only loaded when first requested
-    to save memory and startup time.
+    to save memory and startup time. Now uses the attention implementation system
+    to automatically select the best available attention optimization.
 
     Args:
         model_name: Name of the model to load
+        attention_implementation: Specific attention implementation to use, or None for auto-select
 
     Returns:
-        Loaded GPT2Model instance
+        Loaded model instance (wrapped in our GPT2Model interface)
     """
-    if model_name not in model_instances:
-        print(f"Loading model: {model_name}")
-        model = GPT2Model(model_name, device="cpu")  # TODO: Add GPU support detection
-        model.load_model()
-        model_instances[model_name] = model
-        print(f"Model {model_name} loaded and cached")
-    return model_instances[model_name]
+    # Create a cache key that includes the attention implementation
+    if attention_implementation is None:
+        # Auto-select best implementation
+        best_impl = get_best_attention_implementation(model_name, "cpu")
+        cache_key = f"{model_name}_{best_impl.value}"
+    else:
+        # Use specified implementation
+        try:
+            best_impl = AttentionImplementation(attention_implementation)
+            cache_key = f"{model_name}_{best_impl.value}"
+        except ValueError:
+            # Fall back to auto-select if invalid implementation specified
+            print(
+                f"Warning: Invalid attention implementation '{attention_implementation}', using auto-select"
+            )
+            best_impl = get_best_attention_implementation(model_name, "cpu")
+            cache_key = f"{model_name}_{best_impl.value}"
+
+    if cache_key not in model_instances:
+        available_implementations = get_available_implementations()
+
+        # Check if the desired implementation is available
+        if best_impl not in available_implementations:
+            print(
+                f"Warning: {best_impl.value} not available, falling back to best available"
+            )
+            best_impl = (
+                available_implementations[0]
+                if available_implementations
+                else AttentionImplementation.EAGER
+            )
+            cache_key = f"{model_name}_{best_impl.value}"
+
+        print(
+            f"Loading model: {model_name} with {best_impl.value} attention implementation"
+        )
+
+        # Try to load with attention implementation first
+        try:
+            hf_model = load_model_with_attention(model_name, best_impl, device="cpu")
+
+            # Create a wrapper that provides our GPT2Model interface but uses the optimized model
+            model = GPT2Model(model_name, device="cpu")
+            model.model = hf_model  # Replace the model with our optimized version
+            model.config = hf_model.config
+
+            # Initialize generation capabilities after model loading
+            from ruvonvllm.generation.batch_generator import BatchGenerator
+
+            model._batch_generator = BatchGenerator(model)
+
+        except Exception as e:
+            print(
+                f"Failed to load with {best_impl.value}, falling back to standard loading: {e}"
+            )
+            # Fall back to standard GPT2Model loading
+            model = GPT2Model(model_name, device="cpu")
+            model.load_model()
+
+        model_instances[cache_key] = model
+        print(f"Model {model_name} loaded and cached with {best_impl.value} attention")
+
+    return model_instances[cache_key]
 
 
 def get_tokenizer(model_name: str = "gpt2") -> GPT2TokenizerWrapper:
@@ -153,8 +245,10 @@ def process_request_sync(request: CompletionRequest) -> CompletionResponse:
     Returns:
         CompletionResponse with the generated text
     """
-    # Generate text using sampling
-    generated_tokens = get_model(request.model).generate_with_sampling(
+    # Generate text using sampling with specified attention implementation
+    generated_tokens = get_model(
+        request.model, request.attention_implementation
+    ).generate_with_sampling(
         get_tokenizer(request.model).encode(request.prompt, return_tensors=True),
         max_length=request.max_tokens,
         temperature=request.temperature,
@@ -252,9 +346,11 @@ def process_batch_sync(batch_requests: list) -> list:
     if not batch_requests:
         return []
 
-    # Use the first request's model for the batch (assume all use same model)
+    # Use the first request's model and attention implementation for the batch
+    # (assume all use same model and implementation)
     model_name = batch_requests[0].model
-    model = get_model(model_name)
+    attention_implementation = batch_requests[0].attention_implementation
+    model = get_model(model_name, attention_implementation)
     tokenizer = get_tokenizer(model_name)
 
     # Tokenize all inputs
@@ -450,12 +546,21 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint with queue status."""
+    """Health check endpoint with queue status and attention implementation info."""
     queue_stats = sequential_queue.stats
+    available_implementations = get_available_implementations()
+    best_implementation = get_best_attention_implementation()
+
     return {
         "status": "healthy",
         "models_loaded": list(model_instances.keys()),
         "tokenizers_loaded": list(tokenizer_instances.keys()),
+        "attention": {
+            "available_implementations": [
+                impl.value for impl in available_implementations
+            ],
+            "default_implementation": best_implementation.value,
+        },
         "queue": queue_stats,
     }
 
@@ -556,7 +661,15 @@ if __name__ == "__main__":
     import uvicorn
 
     print("🚀 Starting RuvonVLLM API Server...")
-    print("📚 Part 4: HTTP Server with Streaming")
+    print("📚 Part 9: FlashAttention Integration")
+
+    # Show available attention implementations
+    available = get_available_implementations()
+    best = get_best_attention_implementation()
+    print(
+        f"⚡ Available attention implementations: {[impl.value for impl in available]}"
+    )
+    print(f"🎯 Default (best) implementation: {best.value}")
     print("-" * 50)
 
     uvicorn.run(

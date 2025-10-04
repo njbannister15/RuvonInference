@@ -17,6 +17,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ruvonvllm.model.gpt2 import GPT2Model
 from ruvonvllm.tokenizer.gpt2_tokenizer import GPT2TokenizerWrapper
+from ruvonvllm.attention import (
+    AttentionImplementation,
+    load_model_with_attention,
+    get_available_implementations,
+)
 
 from .common import (
     console,
@@ -673,6 +678,400 @@ def compare(
     )
 
     console.print(Panel(success_text, style="green", border_style="green"))
+
+
+@app.command(name="flash", help="⚡ Test FlashAttention vs standard attention")
+def test_flash_attention(
+    text: str = typer.Option(
+        "Once upon a time in a land far away",
+        "--text",
+        "-t",
+        help="Text to generate from",
+    ),
+    max_length: int = typer.Option(
+        50, "--max-length", "-l", help="Maximum tokens to generate"
+    ),
+    model_name: str = typer.Option(
+        "gpt2", "--model", "-m", help="Model to use (gpt2, gpt2-medium, etc.)"
+    ),
+    device: str = typer.Option(
+        "cpu", "--device", "-d", help="Device to run on (cpu or cuda)"
+    ),
+    show_memory: bool = typer.Option(
+        False, "--show-memory", help="Show memory usage comparison"
+    ),
+):
+    """
+    ⚡ Compare FlashAttention vs standard attention performance
+
+    This command demonstrates the memory and speed benefits of FlashAttention
+    by running the same generation task with different attention implementations.
+    """
+    console.print(create_header())
+    console.print()
+    console.print(
+        Panel(
+            "⚡ FlashAttention vs Standard Attention", style="cyan", border_style="cyan"
+        )
+    )
+    console.print()
+
+    # Check available implementations
+    available_implementations = get_available_implementations()
+    console.print("🔍 Available attention implementations:")
+    for implementation in available_implementations:
+        console.print(f"  • {implementation.value}")
+    console.print()
+
+    if AttentionImplementation.FLASH_ATTENTION_2 not in available_implementations:
+        console.print(
+            "[yellow]⚠️  FlashAttention not available. Install flash-attn package:[/yellow]"
+        )
+        console.print("[dim]pip install flash-attn[/dim]")
+        console.print()
+
+    # Test available implementations
+    implementations_to_test = [AttentionImplementation.EAGER]
+    if AttentionImplementation.FLASH_ATTENTION_2 in available_implementations:
+        implementations_to_test.append(AttentionImplementation.FLASH_ATTENTION_2)
+    elif AttentionImplementation.SDPA in available_implementations:
+        implementations_to_test.append(AttentionImplementation.SDPA)
+
+    results = {}
+
+    for implementation in implementations_to_test:
+        console.print(f"🧪 Testing {implementation.value} implementation...")
+
+        try:
+            # Load model with specific implementation
+            if implementation == AttentionImplementation.EAGER:
+                # Use existing GPT2Model for eager implementation
+                model = GPT2Model(model_name, device=device)
+                model.load_model()
+            else:
+                # Use new attention implementation system
+                torch_dtype = torch.float16 if device == "cuda" else torch.float32
+                hf_model = load_model_with_attention(
+                    model_name, implementation, device, torch_dtype
+                )
+                # Create wrapper for compatibility
+                model = GPT2Model(model_name, device=device)
+                model.model = hf_model
+
+            tokenizer = GPT2TokenizerWrapper(model_name)
+
+            # Measure generation
+            import time
+
+            start_time = time.time()
+
+            if show_memory and torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+                memory_before = torch.cuda.memory_allocated()
+
+            # Generate text
+            input_ids = tokenizer.encode(text, return_tensors=True)
+            generated = model.generate_greedy_with_cache(
+                input_ids, max_length=max_length, show_progress=False
+            )
+            generated_text = tokenizer.decode(generated)
+
+            generation_time = time.time() - start_time
+
+            memory_used = 0
+            if show_memory and torch.cuda.is_available():
+                memory_peak = torch.cuda.max_memory_allocated()
+                memory_used = (memory_peak - memory_before) / 1024**2  # MB
+
+            results[implementation.value] = {
+                "text": generated_text,
+                "time": generation_time,
+                "memory_mb": memory_used,
+                "success": True,
+            }
+
+            console.print(f"  ✅ {implementation.value}: {generation_time:.3f}s")
+            if show_memory and memory_used > 0:
+                console.print(f"     Memory: {memory_used:.1f} MB")
+
+        except Exception as e:
+            console.print(f"  ❌ {implementation.value}: Failed ({str(e)})")
+            results[implementation.value] = {"success": False, "error": str(e)}
+
+    console.print()
+
+    # Display results comparison
+    if len([r for r in results.values() if r.get("success")]) >= 2:
+        console.print("📊 Performance Comparison")
+        comparison_table = Table(show_header=True, header_style="bold magenta")
+        comparison_table.add_column("Implementation", style="cyan")
+        comparison_table.add_column("Time (s)", style="yellow")
+        if show_memory:
+            comparison_table.add_column("Memory (MB)", style="green")
+        comparison_table.add_column("Status", style="white")
+
+        for implementation_name, result in results.items():
+            if result.get("success"):
+                row = [
+                    implementation_name,
+                    f"{result['time']:.3f}",
+                ]
+                if show_memory:
+                    row.append(f"{result.get('memory_mb', 0):.1f}")
+                row.append("✅ Success")
+                comparison_table.add_row(*row)
+            else:
+                row = [implementation_name, "-"]
+                if show_memory:
+                    row.append("-")
+                row.append("❌ Failed")
+                comparison_table.add_row(*row)
+
+        console.print(comparison_table)
+        console.print()
+
+    # Show generated text from best implementation
+    successful_results = {k: v for k, v in results.items() if v.get("success")}
+    if successful_results:
+        best_implementation = min(
+            successful_results.keys(), key=lambda k: successful_results[k]["time"]
+        )
+        best_text = successful_results[best_implementation]["text"]
+
+        text_panel = Panel(
+            f"[bold green]Generated text ({best_implementation}):[/bold green]\n\n{best_text}",
+            style="green",
+            border_style="green",
+        )
+        console.print(text_panel)
+
+    console.print()
+    success_text = Text()
+    success_text.append("🎉 FlashAttention comparison complete!\n", style="bold green")
+    success_text.append(
+        "   • Demonstrated attention implementation performance differences\n",
+        style="dim white",
+    )
+    success_text.append(
+        "   • Compared memory and speed characteristics\n",
+        style="dim white",
+    )
+    success_text.append(
+        "   • Showed practical benefits of modern attention implementations",
+        style="dim white",
+    )
+
+    console.print(Panel(success_text, style="green", border_style="green"))
+
+
+@app.command(name="implementations", help="🔍 Show available attention implementations")
+def show_implementations():
+    """
+    🔍 Display available attention implementations and their capabilities
+
+    This command shows which attention implementations are available
+    on the current system and provides information about each implementation.
+    """
+    console.print(create_header())
+    console.print()
+    console.print(
+        Panel(
+            "🔍 Available Attention Implementations", style="cyan", border_style="cyan"
+        )
+    )
+    console.print()
+
+    try:
+        from ruvonvllm.attention import (
+            get_available_implementations,
+            get_implementation_info,
+        )
+
+        available_implementations = get_available_implementations()
+
+        if not available_implementations:
+            console.print("[red]❌ No attention implementations available[/red]")
+            return
+
+        console.print(
+            f"Found {len(available_implementations)} available implementation(s):"
+        )
+        console.print()
+
+        for implementation in available_implementations:
+            info = get_implementation_info(implementation)
+
+            # Create info panel
+            implementation_text = f"""[bold cyan]{info['name']}[/bold cyan]
+
+[yellow]Description:[/yellow] {info['description']}
+[yellow]Memory Efficiency:[/yellow] {info['memory_efficiency']}
+[yellow]Speed Profile:[/yellow] {info['speed_profile']}
+[yellow]Requirements:[/yellow] {info['requirements']}
+[yellow]Best For:[/yellow] {info['best_for']}"""
+
+            panel = Panel(
+                implementation_text,
+                title=f"⚡ {implementation.value}",
+                border_style="green"
+                if implementation.value == "flash_attention_2"
+                else "blue",
+            )
+            console.print(panel)
+            console.print()
+
+        # Installation help if FlashAttention not available
+        from ruvonvllm.attention import AttentionImplementation
+
+        if AttentionImplementation.FLASH_ATTENTION_2 not in available_implementations:
+            console.print("[yellow]💡 To enable FlashAttention:[/yellow]")
+            console.print("[dim]uv add --group flash flash-attn[/dim]")
+            console.print("[dim]# or: pip install flash-attn>=2.0.0[/dim]")
+            console.print()
+
+    except Exception as e:
+        console.print(f"[red]❌ Error checking implementations: {e}[/red]")
+
+
+@app.command(name="benchmark", help="🏁 Run attention implementation benchmarks")
+def run_benchmarks(
+    prompt: str = typer.Option(
+        "Once upon a time in a land far away",
+        "--prompt",
+        "-p",
+        help="Text prompt for benchmarking",
+    ),
+    max_tokens: int = typer.Option(
+        50, "--max-tokens", "-t", help="Number of tokens to generate"
+    ),
+    model_name: str = typer.Option("gpt2", "--model", "-m", help="Model to benchmark"),
+    device: str = typer.Option(
+        "cpu", "--device", "-d", help="Device to run on (cpu or cuda)"
+    ),
+    detailed: bool = typer.Option(
+        False, "--detailed", help="Show detailed benchmark results"
+    ),
+):
+    """
+    🏁 Run comprehensive attention implementation benchmarks
+
+    This command benchmarks all available attention implementations and compares
+    their performance on the same generation task.
+    """
+    console.print(create_header())
+    console.print()
+    console.print(
+        Panel(
+            "🏁 Attention Implementation Benchmarks", style="cyan", border_style="cyan"
+        )
+    )
+    console.print()
+
+    try:
+        from ruvonvllm.attention.benchmarks import (
+            AttentionBenchmark,
+            format_benchmark_results,
+        )
+        from ruvonvllm.attention import get_available_implementations
+
+        # Check available implementations
+        available_implementations = get_available_implementations()
+        console.print(
+            f"🔍 Benchmarking {len(available_implementations)} implementation(s): {[b.value for b in available_implementations]}"
+        )
+        console.print(f"📝 Prompt: '{prompt[:50]}{'...' if len(prompt) > 50 else ''}'")
+        console.print(f"🎯 Generating {max_tokens} tokens on {device}")
+        console.print()
+
+        # Initialize benchmark
+        benchmark = AttentionBenchmark(model_name, device)
+
+        # Run benchmarks
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                "Running benchmarks...", total=len(available_implementations)
+            )
+
+            results = []
+            for implementation in available_implementations:
+                progress.update(
+                    task, description=f"Benchmarking {implementation.value}..."
+                )
+
+                result = benchmark.benchmark_implementation(
+                    implementation, prompt, max_tokens, warmup_runs=1, benchmark_runs=3
+                )
+                results.append(result)
+
+                status = "✅" if result.success else "❌"
+                progress.console.print(
+                    f"  {status} {implementation.value}: {result.total_time:.3f}s"
+                )
+
+                progress.advance(task)
+
+        console.print()
+
+        # Display results
+        if detailed:
+            # Detailed results table
+            results_table = Table(show_header=True, header_style="bold magenta")
+            results_table.add_column("Implementation", style="cyan")
+            results_table.add_column("Status", style="white")
+            results_table.add_column("Time (s)", style="yellow")
+            results_table.add_column("Tokens/s", style="green")
+            results_table.add_column("Memory (MB)", style="blue")
+
+            for result in results:
+                if result.success:
+                    results_table.add_row(
+                        result.implementation.value,
+                        "✅ Success",
+                        f"{result.total_time:.3f}",
+                        f"{result.tokens_per_second:.1f}",
+                        f"{result.memory_allocated_mb:.1f}",
+                    )
+                else:
+                    results_table.add_row(
+                        result.implementation.value, "❌ Failed", "-", "-", "-"
+                    )
+
+            console.print(results_table)
+        else:
+            # Simple formatted results
+            formatted_results = format_benchmark_results(results)
+            console.print(formatted_results)
+
+        console.print()
+
+        # Recommendations
+        successful_results = [r for r in results if r.success]
+        if len(successful_results) > 1:
+            fastest = min(successful_results, key=lambda r: r.total_time)
+            console.print(
+                f"🏆 [bold green]Fastest implementation: {fastest.implementation.value}[/bold green]"
+            )
+
+            if device == "cuda" and any(
+                r.memory_allocated_mb > 0 for r in successful_results
+            ):
+                most_efficient = min(
+                    successful_results, key=lambda r: r.memory_allocated_mb
+                )
+                console.print(
+                    f"💾 [bold blue]Most memory efficient: {most_efficient.implementation.value}[/bold blue]"
+                )
+
+    except Exception as e:
+        console.print(f"[red]❌ Benchmark failed: {e}[/red]")
+        import traceback
+
+        if detailed:
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
 
 if __name__ == "__main__":
