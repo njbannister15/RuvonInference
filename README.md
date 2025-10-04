@@ -24,22 +24,16 @@ make fmt && make lint
 
 ## Documentation
 
-### Core Articles
+📚 **[Complete 20-Part Series Guide](docs/introduction.md)**
 
-- [Part 1: Tokenizer + Single Forward Pass](docs/part1-article.md)
-- [Part 2: Greedy Decode Loop](docs/part2-article.md)
-- [Part 3: KV-Cache (Single Request)](docs/part3-article.md)
-- [Part 4: HTTP Server (FastAPI)](docs/part4-article.md)
-- [Part 5: Sampling (temp, top-k, top-p)](docs/part5-article.md)
-- [Part 6: Multiple Sequential Requests](docs/part6-article.md)
-- [Part 7: Prefill Batching](docs/part7-article.md)
-- [Part 8: Continuous Batching](docs/part8-article.md)
+A comprehensive journey from basic text generation to production-ready inference serving. Each part builds on the previous ones, covering:
 
-### Advanced Topics
+- **Foundation** (Parts 1-3): Basic generation, memory optimization, KV-cache
+- **API & Sampling** (Parts 4-5): HTTP server, sampling strategies
+- **Concurrent Processing** (Parts 6-8): Sequential, batched, and continuous processing
+- **Advanced Optimizations** (Parts 9-20): FlashAttention, model parallelism, quantization, and more
 
-- [Advanced Attention Mechanisms](docs/part3-advanced-attention.md)
-- [Advanced Entropy and Sampling](docs/part5-advanced-entropy.md)
-- [Technical Glossary](docs/glossary.md)
+The introduction provides learning paths for beginners, experienced developers, and system architects.
 
 ## Project Status
 
