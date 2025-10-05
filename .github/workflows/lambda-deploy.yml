@@ -54,7 +54,7 @@ jobs:
         run: |
           uv sync --dev
           # Install Lambda-specific dependencies
-          uv pip install -r lambda/requirements.txt
+          uv pip install -r ruvoninference/lambda/requirements.txt
 
       - name: Run core tests
         run: |
