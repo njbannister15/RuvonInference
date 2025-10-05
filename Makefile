@@ -103,7 +103,7 @@ lambda-package:
 	@echo "📦 Building Lambda deployment package..."
 	@rm -rf terraform/lambda/package terraform/lambda/deployment-package.zip
 	@mkdir -p terraform/lambda/package
-	@uv pip install --target terraform/lambda/package -r ruvoninference/lambda/requirements.txt
+	@uv pip install --target terraform/lambda/package --only main .
 	@mkdir -p terraform/lambda/package/ruvoninference
 	@cp -r ruvoninference/model terraform/lambda/package/ruvoninference/
 	@cp -r ruvoninference/tokenizer terraform/lambda/package/ruvoninference/
