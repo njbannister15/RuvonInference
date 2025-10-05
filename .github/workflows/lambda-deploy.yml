@@ -6,14 +6,14 @@ on:
     paths:
       - 'ruvoninference/lambda/**'
       - 'ruvoninference/**'
-      - 'terraform-lambda/**'
+      - 'terraform/lambda/**'
       - '.github/workflows/lambda-deploy.yml'
   pull_request:
     branches: [main]
     paths:
       - 'ruvoninference/lambda/**'
       - 'ruvoninference/**'
-      - 'terraform-lambda/**'
+      - 'terraform/lambda/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -79,10 +79,10 @@ jobs:
 
       - name: Check package size
         run: |
-          ls -lh terraform-lambda/deployment-package.zip
-          echo "Package size: $(du -h terraform-lambda/deployment-package.zip | cut -f1)"
+          ls -lh terraform/lambda/deployment-package.zip
+          echo "Package size: $(du -h terraform/lambda/deployment-package.zip | cut -f1)"
           # Warn if package is getting large
-          SIZE=$(du -m terraform-lambda/deployment-package.zip | cut -f1)
+          SIZE=$(du -m terraform/lambda/deployment-package.zip | cut -f1)
           if [ $SIZE -gt 250 ]; then
             echo "⚠️ Warning: Package size is ${SIZE}MB (Lambda limit is 250MB unzipped)"
           fi
@@ -91,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lambda-deployment-package
-          path: terraform-lambda/deployment-package.zip
+          path: terraform/lambda/deployment-package.zip
           retention-days: 30
 
   # deploy:
@@ -112,7 +112,7 @@ jobs:
   #       uses: actions/download-artifact@v4
   #       with:
   #         name: lambda-deployment-package
-  #         path: terraform-lambda/
+  #         path: terraform/lambda/
 
   #     - name: Configure AWS credentials
   #       uses: aws-actions/configure-aws-credentials@v4
@@ -130,35 +130,35 @@ jobs:
 
   #     - name: Terraform Format Check
   #       run: |
-  #         cd terraform-lambda
+  #         cd terraform/lambda
   #         terraform fmt -check
 
   #     - name: Terraform Init
   #       run: |
-  #         cd terraform-lambda
+  #         cd terraform/lambda
   #         terraform init
 
   #     - name: Terraform Validate
   #       run: |
-  #         cd terraform-lambda
+  #         cd terraform/lambda
   #         terraform validate
 
   #     - name: Terraform Plan
   #       id: plan
   #       run: |
-  #         cd terraform-lambda
+  #         cd terraform/lambda
   #         terraform plan -var="environment=${{ github.event.inputs.environment || 'prod' }}" -out=tfplan
 
   #     - name: Terraform Apply
   #       if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
   #       run: |
-  #         cd terraform-lambda
+  #         cd terraform/lambda
   #         terraform apply -auto-approve tfplan
 
   #     - name: Get API endpoint
   #       id: endpoint
   #       run: |
-  #         cd terraform-lambda
+  #         cd terraform/lambda
   #         echo "api_endpoint=$(terraform output -raw api_endpoint)" >> $GITHUB_OUTPUT
 
   #     - name: Test deployed function
@@ -179,7 +179,7 @@ jobs:
 
   #     - name: Create deployment summary
   #       run: |
-  #         cd terraform-lambda
+  #         cd terraform/lambda
   #         cat >> $GITHUB_STEP_SUMMARY << EOF
   #         ## 🚀 Lambda Deployment Successful
 
