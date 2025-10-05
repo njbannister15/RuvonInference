@@ -50,20 +50,14 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install dependencies
-        run: |
-          uv sync --dev
-          # Install Lambda-specific dependencies
-          uv pip install -r ruvoninference/lambda/requirements.txt
+      - name: Setup environment
+        run: make setup
 
       - name: Run core tests
-        run: |
-          uv run pytest tests/ -v --tb=short
+        run: make test
 
       - name: Test Lambda function locally
-        run: |
-          cd ruvoninference/lambda
-          uv run python lambda_function.py
+        run: make lambda-test
 
   build-package:
     name: Build Lambda Deployment Package
@@ -81,47 +75,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Create deployment package
-        run: |
-          # Create clean working directory
-          mkdir -p deployment-package
-          cd deployment-package
-
-          # Install dependencies to package directory
-          pip install -r ../ruvoninference/lambda/requirements.txt -t .
-
-          # Copy RuvonInference source code (minimal subset for Lambda)
-          mkdir -p ruvoninference
-
-          # Copy only essential modules for Lambda
-          cp -r ../ruvoninference/model ruvoninference/
-          cp -r ../ruvoninference/tokenizer ruvoninference/
-          cp -r ../ruvoninference/sampling ruvoninference/
-          cp ../ruvoninference/__init__.py ruvoninference/
-
-          # Copy Lambda function
-          cp ../ruvoninference/lambda/lambda_function.py .
-
-          # Remove unnecessary files to reduce package size
-          find . -type d -name "__pycache__" -exec rm -rf {} + || true
-          find . -type d -name "*.dist-info" -exec rm -rf {} + || true
-          find . -type d -name "*.egg-info" -exec rm -rf {} + || true
-          find . -type f -name "*.pyc" -delete || true
-          find . -type f -name "*.pyo" -delete || true
-
-          # Remove large unnecessary files
-          find . -path "*/torch/test*" -delete || true
-          find . -path "*/torch/include*" -delete || true
-          find . -path "*/torch/share*" -delete || true
-
-          # Create deployment zip
-          zip -r ../deployment-package.zip . -x "*.git*" "*.DS_Store*"
+        run: make lambda-package
 
       - name: Check package size
         run: |
-          ls -lh deployment-package.zip
-          echo "Package size: $(du -h deployment-package.zip | cut -f1)"
+          ls -lh terraform-lambda/deployment-package.zip
+          echo "Package size: $(du -h terraform-lambda/deployment-package.zip | cut -f1)"
           # Warn if package is getting large
-          SIZE=$(du -m deployment-package.zip | cut -f1)
+          SIZE=$(du -m terraform-lambda/deployment-package.zip | cut -f1)
           if [ $SIZE -gt 250 ]; then
             echo "⚠️ Warning: Package size is ${SIZE}MB (Lambda limit is 250MB unzipped)"
           fi
@@ -130,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lambda-deployment-package
-          path: deployment-package.zip
+          path: terraform-lambda/deployment-package.zip
           retention-days: 30
 
   # deploy:

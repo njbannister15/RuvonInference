@@ -103,14 +103,14 @@ lambda-package:
 	@echo "📦 Building Lambda deployment package..."
 	@rm -rf terraform-lambda/package terraform-lambda/deployment-package.zip
 	@mkdir -p terraform-lambda/package
-	@cd terraform-lambda/package && pip install -r ../../ruvoninference/lambda/requirements.txt -t .
-	@cd terraform-lambda/package && mkdir -p ruvoninference
-	@cd terraform-lambda/package && cp -r ../../ruvoninference/model ruvoninference/
-	@cd terraform-lambda/package && cp -r ../../ruvoninference/tokenizer ruvoninference/
-	@cd terraform-lambda/package && cp -r ../../ruvoninference/sampling ruvoninference/
-	@cd terraform-lambda/package && cp ../../ruvoninference/__init__.py ruvoninference/
-	@cd terraform-lambda/package && cp ../../ruvoninference/lambda/lambda_function.py .
-	@cd terraform-lambda/package && find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-	@cd terraform-lambda/package && zip -r ../deployment-package.zip . > /dev/null
-	@echo "✅ Package created: terraform-lambda/deployment-package.zip"
-	@ls -lh terraform-lambda/deployment-package.zip
+	@cd terraform/terraform-lambda/package && pip install -r ../../ruvoninference/lambda/requirements.txt -t .
+	@cd terraform/terraform-lambda/package && mkdir -p ruvoninference
+	@cd terraform/terraform-lambda/package && cp -r ../../ruvoninference/model ruvoninference/
+	@cd terraform/terraform-lambda/package && cp -r ../../ruvoninference/tokenizer ruvoninference/
+	@cd terraform/terraform-lambda/package && cp -r ../../ruvoninference/sampling ruvoninference/
+	@cd terraform/terraform-lambda/package && cp ../../ruvoninference/__init__.py ruvoninference/
+	@cd terraform/terraform-lambda/package && cp ../../ruvoninference/lambda/lambda_function.py .
+	@cd terraform/terraform-lambda/package && find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+	@cd terraform/terraform-lambda/package && zip -r ../deployment-package.zip . > /dev/null
+	@echo "✅ Package created: terraform/terraform-lambda/deployment-package.zip"
+	@ls -lh terraform/terraform-lambda/deployment-package.zip
