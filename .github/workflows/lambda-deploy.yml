@@ -8,6 +8,9 @@ on:
       - 'ruvoninference/**'
       - 'terraform/lambda/**'
       - '.github/workflows/lambda-deploy.yml'
+      - 'Makefile'
+      - 'pyproject.toml'
+      - 'uv.lock'
   pull_request:
     branches: [main]
     paths:
