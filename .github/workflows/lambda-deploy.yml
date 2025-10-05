@@ -1,0 +1,255 @@
+name: Deploy Lambda Function
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ruvoninference/lambda/**'
+      - 'ruvoninference/**'
+      - 'terraform-lambda/**'
+      - '.github/workflows/lambda-deploy.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ruvoninference/lambda/**'
+      - 'ruvoninference/**'
+      - 'terraform-lambda/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  TERRAFORM_VERSION: 1.6.0
+  PYTHON_VERSION: 3.12
+
+jobs:
+  test:
+    name: Test Lambda Function
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+          # Install Lambda-specific dependencies
+          uv pip install -r lambda/requirements.txt
+
+      - name: Run core tests
+        run: |
+          uv run pytest tests/ -v --tb=short
+
+      - name: Test Lambda function locally
+        run: |
+          cd ruvoninference/lambda
+          uv run python lambda_function.py
+
+  build-package:
+    name: Build Lambda Deployment Package
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Create deployment package
+        run: |
+          # Create clean working directory
+          mkdir -p deployment-package
+          cd deployment-package
+
+          # Install dependencies to package directory
+          pip install -r ../ruvoninference/lambda/requirements.txt -t .
+
+          # Copy RuvonInference source code (minimal subset for Lambda)
+          mkdir -p ruvoninference
+
+          # Copy only essential modules for Lambda
+          cp -r ../ruvoninference/model ruvoninference/
+          cp -r ../ruvoninference/tokenizer ruvoninference/
+          cp -r ../ruvoninference/sampling ruvoninference/
+          cp ../ruvoninference/__init__.py ruvoninference/
+
+          # Copy Lambda function
+          cp ../ruvoninference/lambda/lambda_function.py .
+
+          # Remove unnecessary files to reduce package size
+          find . -type d -name "__pycache__" -exec rm -rf {} + || true
+          find . -type d -name "*.dist-info" -exec rm -rf {} + || true
+          find . -type d -name "*.egg-info" -exec rm -rf {} + || true
+          find . -type f -name "*.pyc" -delete || true
+          find . -type f -name "*.pyo" -delete || true
+
+          # Remove large unnecessary files
+          find . -path "*/torch/test*" -delete || true
+          find . -path "*/torch/include*" -delete || true
+          find . -path "*/torch/share*" -delete || true
+
+          # Create deployment zip
+          zip -r ../deployment-package.zip . -x "*.git*" "*.DS_Store*"
+
+      - name: Check package size
+        run: |
+          ls -lh deployment-package.zip
+          echo "Package size: $(du -h deployment-package.zip | cut -f1)"
+          # Warn if package is getting large
+          SIZE=$(du -m deployment-package.zip | cut -f1)
+          if [ $SIZE -gt 250 ]; then
+            echo "⚠️ Warning: Package size is ${SIZE}MB (Lambda limit is 250MB unzipped)"
+          fi
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-deployment-package
+          path: deployment-package.zip
+          retention-days: 30
+
+  # deploy:
+  #   name: Deploy to AWS
+  #   runs-on: ubuntu-latest
+  #   needs: build-package
+  #   if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+  #   permissions:
+  #     id-token: write   # Required for OIDC
+  #     contents: read
+
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+
+  #     - name: Download deployment package
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: lambda-deployment-package
+  #         path: terraform-lambda/
+
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+  #         aws-region: ${{ env.AWS_REGION }}
+  #         # Alternative: use access keys if OIDC not set up
+  #         # aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         # aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  #     - name: Set up Terraform
+  #       uses: hashicorp/setup-terraform@v3
+  #       with:
+  #         terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+  #     - name: Terraform Format Check
+  #       run: |
+  #         cd terraform-lambda
+  #         terraform fmt -check
+
+  #     - name: Terraform Init
+  #       run: |
+  #         cd terraform-lambda
+  #         terraform init
+
+  #     - name: Terraform Validate
+  #       run: |
+  #         cd terraform-lambda
+  #         terraform validate
+
+  #     - name: Terraform Plan
+  #       id: plan
+  #       run: |
+  #         cd terraform-lambda
+  #         terraform plan -var="environment=${{ github.event.inputs.environment || 'prod' }}" -out=tfplan
+
+  #     - name: Terraform Apply
+  #       if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+  #       run: |
+  #         cd terraform-lambda
+  #         terraform apply -auto-approve tfplan
+
+  #     - name: Get API endpoint
+  #       id: endpoint
+  #       run: |
+  #         cd terraform-lambda
+  #         echo "api_endpoint=$(terraform output -raw api_endpoint)" >> $GITHUB_OUTPUT
+
+  #     - name: Test deployed function
+  #       run: |
+  #         # Wait a moment for deployment to propagate
+  #         sleep 10
+
+  #         # Test the deployed API
+  #         API_ENDPOINT="${{ steps.endpoint.outputs.api_endpoint }}"
+  #         echo "Testing API at: $API_ENDPOINT"
+
+  #         RESPONSE=$(curl -s -X POST "$API_ENDPOINT" \
+  #           -H "Content-Type: application/json" \
+  #           -d '{"prompt": "The future of AI is", "max_tokens": 10, "temperature": 0.8}')
+
+  #         echo "API Response:"
+  #         echo "$RESPONSE" | jq .
+
+  #     - name: Create deployment summary
+  #       run: |
+  #         cd terraform-lambda
+  #         cat >> $GITHUB_STEP_SUMMARY << EOF
+  #         ## 🚀 Lambda Deployment Successful
+
+  #         ### 📊 Deployment Details
+  #         - **Environment**: ${{ github.event.inputs.environment || 'prod' }}
+  #         - **Function**: $(terraform output -raw lambda_function_name)
+  #         - **Region**: ${{ env.AWS_REGION }}
+  #         - **API Endpoint**: $(terraform output -raw api_endpoint)
+
+  #         ### 🧪 Quick Test
+  #         \`\`\`bash
+  #         curl -X POST "$(terraform output -raw api_endpoint)" \\
+  #           -H "Content-Type: application/json" \\
+  #           -d '{"prompt": "Once upon a time", "max_tokens": 15}'
+  #         \`\`\`
+
+  #         ### 🔗 Useful Links
+  #         - [AWS Lambda Console](https://console.aws.amazon.com/lambda/home?region=${{ env.AWS_REGION }}#/functions/$(terraform output -raw lambda_function_name))
+  #         - [API Gateway Console](https://console.aws.amazon.com/apigateway/home?region=${{ env.AWS_REGION }})
+  #         - [CloudWatch Logs](https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#logsV2:log-groups/log-group/%2Faws%2Flambda%2F$(terraform output -raw lambda_function_name))
+  #         EOF
+
+  # cleanup:
+  #   name: Cleanup Old Artifacts
+  #   runs-on: ubuntu-latest
+  #   needs: deploy
+  #   if: always()
+
+  #   steps:
+  #     - name: Delete old artifacts
+  #       uses: geekyeggo/delete-artifact@v5
+  #       with:
+  #         name: lambda-deployment-package
+  #         failOnError: false

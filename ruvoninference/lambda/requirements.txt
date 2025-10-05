@@ -1,0 +1,7 @@
+# Core dependencies for Lambda deployment
+torch>=2.0.0,<3.0.0 --index-url https://download.pytorch.org/whl/cpu
+transformers>=4.35.0
+numpy>=1.24.0,<2.0
+
+# Keep minimal for Lambda size limits
+# No dev dependencies or optional packages
