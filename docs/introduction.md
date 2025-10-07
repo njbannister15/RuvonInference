@@ -1,14 +1,12 @@
 # Building an Educational Inference Engine: A 20-Part Journey
 
-Welcome to the comprehensive documentation series for **RuvonInference** - an educational inference engine built from scratch to demonstrate modern LLM serving techniques inspired by systems like vLLM.
+Welcome to the documentation series for **RuvonInference** - an educational inference engine builtto demonstrate modern LLM serving techniques inspired by systems like vLLM.
 
 ## About This Series
 
 This 20-part series takes you from zero to a production-ready inference engine, building up concepts step by step. Each part focuses on a specific optimization or capability, with detailed explanations of both the "why" and the "how."
 
 **Important Note**: This is an educational implementation using the transformers library, designed for learning rather than production scale. Real systems like vLLM use custom CUDA kernels and more advanced optimizations.
-
-**Personal Note**: This series also serves as a teaching tool for me (Nicholas) as I learn about LLM inference systems. Each article represents my journey of understanding these concepts deeply enough to explain them clearly. If you're learning alongside me, you're in good company!
 
 ## Series Overview
 
@@ -28,8 +26,13 @@ This 20-part series takes you from zero to a production-ready inference engine, 
 - **Part 7**: [Prefill Batching](part7-article.md) - Static batch composition for throughput
 - **Part 8**: [Continuous Batching](part8-article.md) - Dynamic request lifecycle management
 
-### Coming Soon (Parts 9-20)
-- **Part 9**: FlashAttention Integration
+### Advanced Features (Part 9)
+- **Part 9**: [FlashAttention Integration](part9-article.md) - Memory-efficient attention implementation
+
+### Production Deployment (Intermission)
+- **Intermission**: [AWS Deployment Infrastructure](intermission-deployment.md) - Docker, ECR, and Terraform deployment
+
+### Coming Soon (Parts 10-20)
 - **Part 10**: Model Parallelism
 - **Part 11**: Pipeline Parallelism
 - **Part 12**: Quantization (INT8/FP16)
@@ -50,7 +53,8 @@ Start with Part 1 and follow sequentially. Each part builds on the previous ones
 ### For Experienced Developers
 You can jump to specific parts based on your interests:
 - **API Development**: Parts 4, 6
-- **Performance Optimization**: Parts 3, 7, 8
+- **Performance Optimization**: Parts 3, 7, 8, 9
+- **Production Deployment**: Intermission - AWS Infrastructure
 - **Theoretical Deep Dives**: Advanced articles
 
 ### For System Architects
@@ -58,6 +62,7 @@ Focus on the architectural decisions:
 - **Part 6**: Queue strategies and design patterns
 - **Part 7**: Static batching trade-offs
 - **Part 8**: Dynamic request management
+- **Intermission**: Production deployment architecture and infrastructure
 
 ## Code Organization
 

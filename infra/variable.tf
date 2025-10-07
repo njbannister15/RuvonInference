@@ -13,23 +13,16 @@ variable "environment" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "t3.large"
+  default     = "g5.xlarge"
 
   validation {
     condition = contains([
       # CPU instances
-      "t3.medium",   # 2 vCPU, 4GB - basic CPU
       "t3.large",    # 2 vCPU, 8GB - medium CPU
-      "t3.xlarge",   # 4 vCPU, 16GB - large CPU
-      "t3.2xlarge",  # 8 vCPU, 32GB - extra large CPU
-      "c5.large",    # 2 vCPU, 4GB - compute optimized
-      "c5.xlarge",   # 4 vCPU, 8GB - compute optimized
-      "c5.2xlarge",  # 8 vCPU, 16GB - compute optimized
-      "c5.4xlarge",  # 16 vCPU, 32GB - compute optimized
       # GPU instances
-      "g5.xlarge",   # 1x A10G, 4 vCPU, 16GB - good for draft
-      "g5.2xlarge",  # 1x A10G, 8 vCPU, 32GB - better for both
-      "g5.4xlarge",  # 1x A10G, 16 vCPU, 64GB - best for target
+      "g5.xlarge",   # 1x A10G, 4 vCPU, 16GB
+      "g5.2xlarge",  # 1x A10G, 8 vCPU, 32GB
+      "g5.4xlarge",  # 1x A10G, 16 vCPU, 64GB
     ], var.instance_type)
     error_message = "Instance type must be a supported CPU or GPU instance."
   }
@@ -100,5 +93,5 @@ variable "use_spot_instance" {
 variable "use_gpu" {
   description = "Whether to use a GPU instance"
   type        = bool
-  default     = false
+  default     = true
 }

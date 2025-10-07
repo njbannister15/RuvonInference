@@ -3,25 +3,6 @@
 An educational inference engine built from scratch, demonstrating modern LLM serving techniques inspired by systems like vLLM. This miniature but real system can load pretrained transformer models (starting with GPT-2 124M → scaling to GPT-2 XL 1.5B with a final goal to be able to run gpt-oss on a truly production quality deployment), tokenize user prompts, run efficient prefill and incremental decode passes, and serve generations over an HTTP API with streaming, batching, and telemetry. The core focus is not training new models, but serving existing ones efficiently while learning the concepts behind: paged KV-cache allocation for memory reuse, continuous batching schedulers so new requests can join mid-flight, and fused decode kernels for speed. w00t!
 
 
-## Quick Start
-
-```bash
-# Setup environment
-make setup
-
-# Run CLI interface
-make run-cli
-
-# Start API server
-make run-api
-
-# Run tests
-make test-all
-
-# Format and lint
-make fmt && make lint
-```
-
 ## Documentation
 
 📚 **[Complete 20-Part Series Guide](docs/introduction.md)**

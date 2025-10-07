@@ -4,7 +4,7 @@
 
 Part 9 brings our educational inference engine its most significant memory optimization yet. By **integrating** the FlashAttention library, we can leverage state-of-the-art attention optimizations to transform attention computation from a memory-bound O(n²) operation to a memory-efficient O(n) process, enabling longer sequences and more efficient GPU utilization.
 
-> **Note**: We are **using** the existing FlashAttention implementation (via the `flash-attn` package), not implementing it from scratch. FlashAttention is a sophisticated optimization that would be a major educational undertaking on its own. Here we focus on **integration** and **demonstrating** its benefits within our inference engine.
+> **Note**: We are using the existing FlashAttention implementation (via the `flash-attn` package), not implementing it from scratch. FlashAttention is a sophisticated optimization that would be a major educational undertaking on its own. Here we focus on **integration** and **demonstrating** its benefits within our inference engine.
 
 ## The Memory Wall Problem
 

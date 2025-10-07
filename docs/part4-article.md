@@ -2,17 +2,17 @@
 
 *Standing up a GPT-2 API in 24 hours: Building our first HTTP inference server*
 
-Part 4 marked a pivotal transformation in our educational inference engine journey. We took our command-line inference engine and wrapped it in a **production-ready HTTP API** with queue-based processing. Suddenly, our GPT-2 model went from a developer tool to something that looks and feels like a real product.
+Part 4 marked a pivotal transformation in our educational inference engine journey. We took our command-line inference engine and wrapped it in an HTTP API with queue-based processing.
 
 ## The Product Surface Problem
 
-After three parts of building solid foundations - tokenization, generation, and KV-cache optimization - we had a powerful inference engine. But there was one problem: **investors don't curl into terminal applications**.
+After three parts of building solid foundations - tokenization, generation, and KV-cache optimization - we have a simple engine.
 
-To demonstrate real product potential, we needed to transform our CLI tool into something that could serve multiple users over HTTP, with the kind of queue-based processing that makes production applications scalable and reliable.
+To demonstrate real product potential, we needed to transform our CLI tool into something that could serve multiple users over HTTP, with the kind of queue-based processing that makes production applications scalable.
 
 ## Building the FastAPI Server
 
-The solution was FastAPI - Python's modern, fast web framework. In just a few hours, we built a complete API server with:
+Enter FastAPI - Python's modern, fast web framework. In just a few hours, we built a complete API server with:
 
 ### Core Endpoints
 
