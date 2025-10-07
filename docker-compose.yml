@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  ruvoninference-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TORCH_INDEX_URL: "https://download.pytorch.org/whl/cpu"
+    ports:
+      - "8000:8000"
+    environment:
+      - DEVICE=cpu
+      - MODEL_NAME=gpt2
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  ruvoninference-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TORCH_INDEX_URL: "https://download.pytorch.org/whl/cu121"
+    ports:
+      - "8001:8000"
+    environment:
+      - DEVICE=cuda
+      - MODEL_NAME=gpt2
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  default:
+    name: ruvoninference-network

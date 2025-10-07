@@ -1,0 +1,84 @@
+# Git and version control
+.git
+.gitignore
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+test-reports/
+.tox/
+
+# Development tools
+.pre-commit-config.yaml
+.ruff_cache/
+
+# Documentation and notes
+docs/
+*.md
+TODO.md
+DEPLOYMENT.md
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+.tmp/
+temp/
+*.tmp
+*.bak
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Infrastructure and deployment
+infra/
+terraform/
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# Testing and development files
+tests/
+postman_collection.json
+pytest.ini
+Makefile
+
+# Lambda specific
+lambda/
+
+# Claude specific
+.claude/
+
+# Lock files (uv.lock is copied explicitly)
+# uv.lock
+
+# Keep these for the build:
+# pyproject.toml
+# ruvoninference/
+# cli.py
+# README.md (for documentation in container)

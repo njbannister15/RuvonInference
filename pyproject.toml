@@ -13,17 +13,17 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     "aiohttp>=3.8.0",
-    # NOTE: intentionally NO uvicorn/uvloop/httptools/websockets/pre-commit here
+    "uvicorn>=0.37.0",
+    "httptools>=0.6.4",
+    "websockets>=15.0.1",
+    "uvloop>=0.21.0"
 ]
 
 [dependency-groups]
 dev = [
     "pre-commit>=4.3.0",
     "ruff>=0.13.2",
-    "uvicorn>=0.37.0",
-    "uvloop>=0.21.0",
-    "httptools>=0.6.4",
-    "websockets>=15.0.1",
+    "uvloop>=0.21.0"
 ]
 
 test = [

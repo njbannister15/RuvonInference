@@ -11,3 +11,13 @@ wheels/
 logs
 test-reports
 DEPLOYMENT.md
+infra/RuvonInference.pem
+infra/terraform.tfvars
+.env
+id_rsa*
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform/
