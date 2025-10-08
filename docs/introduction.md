@@ -1,12 +1,20 @@
 # Building an Educational Inference Engine: A 20-Part Journey
 
-Welcome to the documentation series for **RuvonInference** - an educational inference engine builtto demonstrate modern LLM serving techniques inspired by systems like vLLM.
+This is an educational inference engine built to demonstrate modern LLM serving techniques inspired by systems like vLLM.
+
+Throughout the series, we’ll mirror production-grade ideas such as PagedAttention for KV-cache memory management and continuous (iteration-level) batching, popularized by vLLM — while keeping the code approachable and educational.
+
+We’ll implement key components where appropriate and use “off-the-shelf” tools elsewhere. This isn’t meant to be a rigorous scientific deep dive, but it includes enough substance to teach the fundamentals and serve as a launch point for deeper exploration.
+
+The implementation uses the Transformers library and is designed for learning, not production scale. Real systems like vLLM use custom CUDA kernels and advanced GPU I/O optimizations. This project prioritizes clarity over raw throughput; production-grade engines (e.g., vLLM + FlashAttention) rely on heavy CUDA optimization that we deliberately omit here.
+
+This is also a work in progress — a living project where I intend to validate, verify, and apply scientific rigor as I go. I’m learning alongside you. Join me on the journey.
 
 ## About This Series
 
 This 20-part series takes you from zero to a production-ready inference engine, building up concepts step by step. Each part focuses on a specific optimization or capability, with detailed explanations of both the "why" and the "how."
 
-**Important Note**: This is an educational implementation using the transformers library, designed for learning rather than production scale. Real systems like vLLM use custom CUDA kernels and more advanced optimizations.
+**Important Note**:
 
 ## Series Overview
 
